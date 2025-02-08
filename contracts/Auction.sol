@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Auction is Ownable {
-    struct Auction {
+    struct AuctionState {
         address token;
         uint256 totalTokens;
         uint256 startTime;
@@ -14,14 +14,14 @@ contract Auction is Ownable {
         bool isFinalized;
     }
 
-    struct Bid {
+    struct BidState {
         address bidder;
         uint256 quantity;
         uint256 pricePerToken;
     }
 
-    Auction public auction;
-    mapping(uint256 bidId => Bid bid) public bids;
+    AuctionState public auction;
+    mapping(uint256 bidId => BidState bid) public bids;
     uint256 public nextBidId;
 
     // TODO: Add events
