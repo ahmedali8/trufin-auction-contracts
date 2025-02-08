@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.23;
 
-contract Auction {
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+
+contract Auction is Ownable {
     struct Auction {
         address token;
         uint256 totalTokens;
@@ -29,4 +31,6 @@ contract Auction {
     // placeBid -> only callable by non-owner, places a bid
     // endAuction -> callable by anyone, finalizes the auction
     // claimTokens -> only callable by the winners to claim tokens and pay money in eth
+
+    constructor(address _initialOwner) Ownable(_initialOwner) { }
 }
