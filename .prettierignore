@@ -14,7 +14,6 @@ docs
 dodoc
 broadcast
 foundry_cache
-lib
 out
 deployments
 cache_hardhat
