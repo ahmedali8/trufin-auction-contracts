@@ -167,6 +167,11 @@ describe("Auction Tests", function () {
       const actualNewBidId = await auctionContract.nextBidId();
       const expectedNewBidId = expectedBidId + 1n;
       expect(actualNewBidId).to.equal(expectedNewBidId);
+
+      // assert the balance of the contract
+      const auctionContractAddress = await auctionContract.getAddress();
+      const contractBalance = await ethers.provider.getBalance(auctionContractAddress);
+      expect(contractBalance).to.equal(totalPrice);
     });
   });
 
