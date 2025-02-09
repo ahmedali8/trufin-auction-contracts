@@ -84,6 +84,19 @@ describe("Auction Tests", function () {
       ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionTime");
     });
 
+    it("should revert if tokens not approved", async function () {
+      const timeBuffer = 5;
+
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("1");
+      const startTime = (await time.latest()) + timeBuffer;
+      const endTime = startTime + time.duration.minutes(10);
+
+      await expect(
+        auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime)
+      ).to.be.revertedWithCustomError(tokenContract, "ERC20InsufficientAllowance");
+    });
+
     it("should create a new auction with event", async function () {
       const timeBuffer = 5;
 
@@ -91,6 +104,9 @@ describe("Auction Tests", function () {
       const totalTokens = parseEther("1");
       const startTime = (await time.latest()) + timeBuffer;
       const endTime = startTime + time.duration.minutes(10);
+
+      // Approve the auction contract to spend the tokens
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
 
       await expect(auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime))
         .to.emit(auctionContract, "AuctionStarted")
@@ -117,6 +133,7 @@ describe("Auction Tests", function () {
       const totalTokens = parseEther("10");
       const startTime = (await time.latest()) + timeBuffer;
       const endTime = startTime + time.duration.minutes(10);
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
 
       // Move time forward to the start of the auction
@@ -185,6 +202,7 @@ describe("Auction Tests", function () {
       const totalTokens = parseEther("10");
       startTime = (await time.latest()) + timeBuffer;
       endTime = startTime + time.duration.minutes(10);
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
     });
 
@@ -259,6 +277,7 @@ describe("Auction Tests", function () {
       const totalTokens = parseEther("10");
       startTime = (await time.latest()) + timeBuffer;
       endTime = startTime + time.duration.minutes(10);
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
 
       // Move time forward to the end of the auction
@@ -297,6 +316,7 @@ describe("Auction Tests", function () {
       const totalTokens = parseEther("10");
       startTime = (await time.latest()) + timeBuffer;
       endTime = startTime + time.duration.minutes(10);
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
 
       // Move time forward to the start of the auction

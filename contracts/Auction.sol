@@ -103,6 +103,9 @@ contract Auction is Ownable {
             isFinalized: false
         });
 
+        // take tokens from the owner and transfer them to this contract
+        IERC20(token).transferFrom(_msgSender(), address(this), totalTokens);
+
         emit AuctionStarted(token, totalTokens, startTime, endTime);
     }
 
