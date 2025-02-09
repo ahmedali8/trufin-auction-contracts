@@ -1,7 +1,7 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { ZeroAddress, parseEther } from "ethers";
+import { ZeroAddress, parseEther, zeroPadBytes } from "ethers";
 import { ethers } from "hardhat";
 
 import type { Auction, MockToken } from "../types";
@@ -241,6 +241,44 @@ describe("Auction Tests", function () {
       const auctionState = await auctionContract.auction();
       expect(auctionState.merkleRoot).to.equal(merkleRoot);
       expect(auctionState.ipfsHash).to.equal(ipfsHash);
+    });
+  });
+
+  describe("#endAuction", function () {
+    const timeBuffer = 5;
+    let startTime = 0;
+    let endTime = 0;
+
+    beforeEach(async function () {
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("10");
+      startTime = (await time.latest()) + timeBuffer;
+      endTime = startTime + time.duration.minutes(10);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+    });
+
+    it("should revert if merkle root has not been submitted", async function () {
+      await expect(auctionContract.connect(owner).endAuction()).to.be.revertedWithCustomError(
+        auctionContract,
+        "InvalidMerkleRoot"
+      );
+    });
+
+    it("should end the auction successfully", async function () {
+      const merkleRoot = zeroPadBytes("0x01", 32);
+      const ipfsHash = "QmTestHash";
+
+      await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
+
+      await expect(auctionContract.connect(alice).endAuction())
+        .to.emit(auctionContract, "AuctionFinalized")
+        .withArgs(alice.address);
+
+      const auctionState = await auctionContract.auction();
+      expect(auctionState.isFinalized).to.equal(true);
     });
   });
 });

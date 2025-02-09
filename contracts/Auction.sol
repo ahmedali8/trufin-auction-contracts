@@ -36,10 +36,12 @@ contract Auction is Ownable {
     error AuctionStillActive();
     error AuctionAlreadyFinalized();
     error InvalidIPFSHash();
+    error InvalidMerkleRoot();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
     event MerkleRootSubmitted(bytes32 merkleRoot, string ipfsHash);
+    event AuctionFinalized(address caller);
 
     modifier onlyDuringAuction() {
         if (block.timestamp < auction.startTime || block.timestamp > auction.endTime) {
@@ -138,7 +140,17 @@ contract Auction is Ownable {
         emit MerkleRootSubmitted(merkleRoot, ipfsHash);
     }
 
+    // there would be a window between the call of submitMerkleRoot and endAuction that would act as
+    // the dispute period for the auction set to 2 hours
+
     // endAuction -> callable by anyone, finalizes the auction
+    function endAuction() external isNotFinalized {
+        if (auction.merkleRoot == bytes32(0)) {
+            revert InvalidMerkleRoot();
+        }
+        auction.isFinalized = true;
+        emit AuctionFinalized(_msgSender());
+    }
 
     // claimTokens -> only callable by the winners to claim tokens and pay money in eth
 
