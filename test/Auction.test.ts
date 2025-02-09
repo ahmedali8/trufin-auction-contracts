@@ -108,4 +108,65 @@ describe("Auction Tests", function () {
       expect(auctionState.isFinalized).to.equal(false);
     });
   });
+
+  describe("#placeBid", function () {
+    beforeEach(async function () {
+      const timeBuffer = 5;
+
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("10");
+      const startTime = (await time.latest()) + timeBuffer;
+      const endTime = startTime + time.duration.minutes(10);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+
+      // Move time forward to the start of the auction
+      await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
+    });
+
+    it("should revert if the owner tries to place a bid", async function () {
+      await expect(
+        auctionContract.connect(owner).placeBid(1, 0, { value: 0 })
+      ).to.be.revertedWithCustomError(auctionContract, "OwnerCannotPlaceABid");
+    });
+
+    it("should revert if the bid quantity is zero", async function () {
+      await expect(
+        auctionContract.connect(alice).placeBid(0, parseEther("1"), { value: 0 })
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidBidQuantity");
+    });
+
+    it("should revert if the bid price per token is zero", async function () {
+      await expect(
+        auctionContract.connect(alice).placeBid(1, 0, { value: 0 })
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
+      await expect(
+        auctionContract.connect(alice).placeBid(1, 0, { value: parseEther("1") })
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
+    });
+
+    it("should place a bid successfully", async function () {
+      const quantity = 1n;
+      const pricePerToken = parseEther("1");
+      const totalPrice = pricePerToken * quantity;
+
+      const expectedBidId = 1n;
+      const actualBidId = await auctionContract.nextBidId();
+      expect(actualBidId).to.equal(expectedBidId);
+      await expect(
+        auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice })
+      )
+        .to.emit(auctionContract, "BidPlaced")
+        .withArgs(actualBidId, alice.address, quantity, pricePerToken);
+
+      const bid = await auctionContract.bids(actualBidId);
+
+      expect(bid.bidder).to.equal(alice.address);
+      expect(bid.quantity).to.equal(quantity);
+      expect(bid.pricePerToken).to.equal(pricePerToken);
+
+      const actualNewBidId = await auctionContract.nextBidId();
+      const expectedNewBidId = expectedBidId + 1n;
+      expect(actualNewBidId).to.equal(expectedNewBidId);
+    });
+  });
 });
