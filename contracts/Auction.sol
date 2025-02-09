@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "hardhat/console.sol";
 
 contract Auction is Ownable {
@@ -37,11 +38,15 @@ contract Auction is Ownable {
     error AuctionAlreadyFinalized();
     error InvalidIPFSHash();
     error InvalidMerkleRoot();
+    error AuctionNotFinalized();
+    error BidDoesNotExist();
+    error TokensAlreadyClaimed();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
     event MerkleRootSubmitted(bytes32 merkleRoot, string ipfsHash);
     event AuctionFinalized(address caller);
+    event TokensClaimed(address bidder, uint256 quantity);
 
     modifier onlyDuringAuction() {
         if (block.timestamp < auction.startTime || block.timestamp > auction.endTime) {
@@ -153,6 +158,25 @@ contract Auction is Ownable {
     }
 
     // claimTokens -> only callable by the winners to claim tokens and pay money in eth
+    function claimTokens(uint256 bidId /* pass proof here as well */ ) external {
+        if (!auction.isFinalized) {
+            revert AuctionNotFinalized();
+        }
+        if (bids[bidId].bidder != _msgSender()) {
+            revert BidDoesNotExist();
+        }
+
+        // TODO: Implement Merkle proof verification
+
+        uint256 quantity = bids[bidId].quantity;
+
+        // update state
+        delete bids[bidId];
+
+        IERC20(auction.token).transfer(_msgSender(), quantity);
+
+        emit TokensClaimed(_msgSender(), quantity);
+    }
 
     constructor(address _initialOwner) Ownable(_initialOwner) { }
 }
