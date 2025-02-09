@@ -169,4 +169,78 @@ describe("Auction Tests", function () {
       expect(actualNewBidId).to.equal(expectedNewBidId);
     });
   });
+
+  describe("#submitMerkleRoot", function () {
+    const timeBuffer = 5;
+    let startTime = 0;
+    let endTime = 0;
+
+    beforeEach(async function () {
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("10");
+      startTime = (await time.latest()) + timeBuffer;
+      endTime = startTime + time.duration.minutes(10);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+    });
+
+    it("should revert if not called by the owner", async function () {
+      const merkleRoot = ZERO_BYTES32;
+      const ipfsHash = "QmTestHash";
+
+      await expect(
+        auctionContract.connect(alice).submitMerkleRoot(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
+    });
+
+    it("should revert if its called before the auction has started", async function () {
+      const merkleRoot = ZERO_BYTES32;
+      const ipfsHash = "QmTestHash";
+
+      await expect(
+        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
+    });
+
+    it("should revert if its called during the auction", async function () {
+      // Move time forward to the start of the auction
+      await time.increaseTo(startTime + time.duration.minutes(5));
+
+      const merkleRoot = ZERO_BYTES32;
+      const ipfsHash = "QmTestHash";
+
+      await expect(
+        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
+    });
+
+    // TODO: should revert if the auction is already finalized
+
+    it("should revert if ipfs hash is invalid", async function () {
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+
+      const merkleRoot = ZERO_BYTES32;
+      const ipfsHash = "";
+
+      await expect(
+        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidIPFSHash");
+    });
+
+    it("should submit the merkle root and ipfs hash successfully", async function () {
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+
+      const merkleRoot = ZERO_BYTES32;
+      const ipfsHash = "QmTestHash";
+
+      await expect(auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash))
+        .to.emit(auctionContract, "MerkleRootSubmitted")
+        .withArgs(merkleRoot, ipfsHash);
+
+      const auctionState = await auctionContract.auction();
+      expect(auctionState.merkleRoot).to.equal(merkleRoot);
+      expect(auctionState.ipfsHash).to.equal(ipfsHash);
+    });
+  });
 });
