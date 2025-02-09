@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import "hardhat/console.sol";
 
 contract Auction is Ownable {
     struct AuctionState {
@@ -29,7 +30,7 @@ contract Auction is Ownable {
     error InvalidTokenAddress();
     error InvalidTotalTokens();
 
-    // TODO: Add events
+    event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
 
     // TODO: Functions to add:
     // startAuction -> only callable by the owner, starts the auction
@@ -48,11 +49,11 @@ contract Auction is Ownable {
         if (token == address(0)) {
             revert InvalidTokenAddress();
         }
-        if (endTime <= block.timestamp || startTime <= block.timestamp || endTime <= startTime) {
-            revert InvalidAuctionTime();
-        }
         if (totalTokens == 0) {
             revert InvalidTotalTokens();
+        }
+        if (startTime < block.timestamp || endTime <= startTime) {
+            revert InvalidAuctionTime();
         }
 
         auction = AuctionState({
@@ -65,7 +66,7 @@ contract Auction is Ownable {
             isFinalized: false
         });
 
-        // TODO: Emit event
+        emit AuctionStarted(token, totalTokens, startTime, endTime);
     }
 
     // placeBid -> only callable by non-owner, places a bid
