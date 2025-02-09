@@ -33,13 +33,31 @@ contract Auction is Ownable {
     error InvalidBidQuantity();
     error InvalidBidPrice();
     error OwnerCannotPlaceABid();
+    error AuctionStillActive();
+    error AuctionAlreadyFinalized();
+    error InvalidIPFSHash();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
+    event MerkleRootSubmitted(bytes32 merkleRoot, string ipfsHash);
 
     modifier onlyDuringAuction() {
         if (block.timestamp < auction.startTime || block.timestamp > auction.endTime) {
             revert AuctionNotActive();
+        }
+        _;
+    }
+
+    modifier onlyAfterAuction() {
+        if (block.timestamp <= auction.endTime) {
+            revert AuctionStillActive();
+        }
+        _;
+    }
+
+    modifier isNotFinalized() {
+        if (auction.isFinalized) {
+            revert AuctionAlreadyFinalized();
         }
         _;
     }
@@ -100,7 +118,28 @@ contract Auction is Ownable {
         nextBidId++;
     }
 
+    function submitMerkleRoot(
+        bytes32 merkleRoot,
+        string calldata ipfsHash
+    )
+        external
+        onlyOwner
+        onlyAfterAuction
+        isNotFinalized
+    {
+        // TODO: validate merkleRoot
+
+        if (bytes(ipfsHash).length == 0) {
+            revert InvalidIPFSHash();
+        }
+        auction.merkleRoot = merkleRoot;
+        auction.ipfsHash = ipfsHash;
+
+        emit MerkleRootSubmitted(merkleRoot, ipfsHash);
+    }
+
     // endAuction -> callable by anyone, finalizes the auction
+
     // claimTokens -> only callable by the winners to claim tokens and pay money in eth
 
     constructor(address _initialOwner) Ownable(_initialOwner) { }
