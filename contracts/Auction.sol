@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "hardhat/console.sol";
 
 contract Auction is Ownable {
@@ -41,6 +42,7 @@ contract Auction is Ownable {
     error AuctionNotFinalized();
     error BidDoesNotExist();
     error TokensAlreadyClaimed();
+    error InvalidProof();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
@@ -117,7 +119,7 @@ contract Auction is Ownable {
         if (quantity == 0) {
             revert InvalidBidQuantity();
         }
-        if (pricePerToken == 0 || (quantity * pricePerToken) != msg.value) {
+        if (pricePerToken == 0 || ((quantity * pricePerToken) / 1e18) != msg.value) {
             revert InvalidBidPrice();
         }
 
@@ -137,7 +139,9 @@ contract Auction is Ownable {
         onlyAfterAuction
         isNotFinalized
     {
-        // TODO: validate merkleRoot
+        if (merkleRoot == bytes32(0)) {
+            revert InvalidMerkleRoot();
+        }
 
         if (bytes(ipfsHash).length == 0) {
             revert InvalidIPFSHash();
@@ -161,24 +165,27 @@ contract Auction is Ownable {
     }
 
     // claimTokens -> only callable by the winners to claim tokens and pay money in eth
-    function claimTokens(uint256 bidId /* pass proof here as well */ ) external {
+    function claimTokens(uint256 bidId, bytes32[] calldata proof) external {
         if (!auction.isFinalized) {
             revert AuctionNotFinalized();
         }
-        if (bids[bidId].bidder != _msgSender()) {
+
+        BidState memory _bid = bids[bidId];
+
+        if (_bid.bidder != _msgSender()) {
             revert BidDoesNotExist();
         }
 
-        // TODO: Implement Merkle proof verification
-
-        uint256 quantity = bids[bidId].quantity;
+        // Verify the Merkle proof
+        bytes32 _leaf = keccak256(abi.encodePacked(_msgSender(), _bid.quantity));
+        if (!MerkleProof.verify(proof, auction.merkleRoot, _leaf)) revert InvalidProof();
 
         // update state
         delete bids[bidId];
 
-        IERC20(auction.token).transfer(_msgSender(), quantity);
+        IERC20(auction.token).transfer(_msgSender(), _bid.quantity);
 
-        emit TokensClaimed(_msgSender(), quantity);
+        emit TokensClaimed(_msgSender(), _bid.quantity);
     }
 
     constructor(address _initialOwner) Ownable(_initialOwner) { }
