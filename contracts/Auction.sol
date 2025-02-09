@@ -4,7 +4,6 @@ pragma solidity ^0.8.23;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "hardhat/console.sol";
 
 contract Auction is Ownable {
     struct AuctionState {
@@ -177,7 +176,7 @@ contract Auction is Ownable {
         }
 
         // Verify the Merkle proof
-        bytes32 _leaf = keccak256(abi.encodePacked(_msgSender(), _bid.quantity));
+        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(_msgSender(), _bid.quantity))));
         if (!MerkleProof.verify(proof, auction.merkleRoot, _leaf)) revert InvalidProof();
 
         // update state

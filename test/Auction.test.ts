@@ -4,6 +4,7 @@ import { expect } from "chai";
 import { ZeroAddress, parseEther, parseUnits, zeroPadBytes } from "ethers";
 import { ethers } from "hardhat";
 
+import { generateMerkleTree } from "../lib/merkle-tree/generate-merkle-tree";
 import type { Auction, MockToken } from "../types";
 import { ZERO_BYTES32 } from "../utils/constants";
 import { loadFixtures } from "./shared/fixtures";
@@ -236,8 +237,6 @@ describe("Auction Tests", function () {
       ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
     });
 
-    // TODO: should revert if the auction is already finalized
-
     it("should revert if merkle root is invalid", async function () {
       // Move time forward to the end of the auction
       await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
@@ -318,98 +317,107 @@ describe("Auction Tests", function () {
     });
   });
 
-  // describe("#claimTokens", function () {
-  //   const timeBuffer = 5;
-  //   let startTime = 0;
-  //   let endTime = 0;
+  describe("#claimTokens", function () {
+    const timeBuffer = 5;
+    let startTime = 0;
+    let endTime = 0;
+    let root = "";
+    let proofs: Record<string, string[]> = {}; // bidder => proof
 
-  //   beforeEach(async function () {
-  //     const tokenAddress = await tokenContract.getAddress();
-  //     const totalTokens = parseEther("10");
-  //     startTime = (await time.latest()) + timeBuffer;
-  //     endTime = startTime + time.duration.minutes(10);
-  //     await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-  //     await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+    const invalidProof = ["0xa7a72291e3c368d9052a4baa918856f83eca42f8862b56ad9b17bf3cb8038885"];
 
-  //     // Move time forward to the start of the auction
-  //     await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
+    beforeEach(async function () {
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("10");
+      startTime = (await time.latest()) + timeBuffer;
+      endTime = startTime + time.duration.minutes(10);
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
 
-  //     // Place a bid
-  //     const quantity = 10n;
-  //     const pricePerToken = parseEther("1");
-  //     const totalPrice = pricePerToken * quantity;
-  //     await auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice });
+      // Move time forward to the start of the auction
+      await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
 
-  //     // Move time forward to the end of the auction
-  //     await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+      // Place a bid
+      const quantity = parseEther("100"); // 100 tokens
+      const pricePerToken = parseUnits("1", 17); // 0.1 ETH per token
+      const totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
+      await auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice });
+      await auctionContract.connect(bob).placeBid(quantity, pricePerToken, { value: totalPrice });
 
-  //     const merkleRoot = zeroPadBytes("0x01", 32);
-  //     const ipfsHash = "QmTestHash";
-  //     await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
-  //   });
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
 
-  //   it("should revert if the auction is not finalized", async function () {
-  //     const bidId = 1;
+      // create a merkle root
+      const data = [
+        { bidder: alice.address, quantity: quantity },
+        { bidder: bob.address, quantity: quantity },
+      ];
+      const tree = generateMerkleTree(data);
+      root = tree.root;
+      proofs = tree.proofs;
+      const ipfsHash = "QmTestHash";
+      await auctionContract.connect(owner).submitMerkleRoot(root, ipfsHash);
+    });
 
-  //     await expect(auctionContract.connect(alice).claimTokens(bidId)).to.be.revertedWithCustomError(
-  //       auctionContract,
-  //       "AuctionNotFinalized"
-  //     );
-  //   });
+    it("should revert if the auction is not finalized", async function () {
+      const bidId = 1;
 
-  //   it("should revert if the bid does not exist", async function () {
-  //     await auctionContract.connect(bob).endAuction();
+      await expect(
+        auctionContract.connect(alice).claimTokens(bidId, invalidProof)
+      ).to.be.revertedWithCustomError(auctionContract, "AuctionNotFinalized");
+    });
 
-  //     const bidId = 999; // Non-existent bid ID
+    it("should revert if the bid does not exist", async function () {
+      await auctionContract.connect(bob).endAuction();
 
-  //     await expect(auctionContract.connect(alice).claimTokens(bidId)).to.be.revertedWithCustomError(
-  //       auctionContract,
-  //       "BidDoesNotExist"
-  //     );
-  //   });
+      const bidId = 999; // Non-existent bid ID
 
-  //   it("should revert if tokens are already claimed", async function () {
-  //     await auctionContract.connect(bob).endAuction();
+      await expect(
+        auctionContract.connect(alice).claimTokens(bidId, invalidProof)
+      ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
+    });
 
-  //     const bidId = 1;
+    it("should revert if tokens are already claimed", async function () {
+      await auctionContract.connect(bob).endAuction();
 
-  //     // Mint some tokens to the auction contract
-  //     const auctionContractAddress = await auctionContract.getAddress();
-  //     const tokenAmount = parseEther("100");
-  //     await tokenContract.mint(auctionContractAddress, tokenAmount);
+      const bidId = 1;
 
-  //     // Claim tokens for the first time
-  //     await auctionContract.connect(alice).claimTokens(bidId);
+      // Mint some tokens to the auction contract
+      const auctionContractAddress = await auctionContract.getAddress();
+      const tokenAmount = parseEther("100");
+      await tokenContract.mint(auctionContractAddress, tokenAmount);
 
-  //     // Try to claim tokens again
-  //     await expect(auctionContract.connect(alice).claimTokens(bidId)).to.be.revertedWithCustomError(
-  //       auctionContract,
-  //       "BidDoesNotExist"
-  //     );
-  //   });
+      // Claim tokens for the first time
+      await auctionContract.connect(alice).claimTokens(bidId, proofs[alice.address]);
 
-  //   it("should claim tokens successfully", async function () {
-  //     await auctionContract.connect(bob).endAuction();
-  //     const bidId = 1;
+      // Try to claim tokens again
+      await expect(
+        auctionContract.connect(alice).claimTokens(bidId, proofs[alice.address])
+      ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
+    });
 
-  //     const quantity = (await auctionContract.bids(bidId)).quantity;
+    it("should claim tokens successfully", async function () {
+      await auctionContract.connect(bob).endAuction();
+      const bidId = 1;
 
-  //     // Mint some tokens to the auction contract
-  //     const auctionContractAddress = await auctionContract.getAddress();
-  //     const tokenAmount = parseEther("100");
-  //     await tokenContract.mint(auctionContractAddress, tokenAmount);
+      const quantity = (await auctionContract.bids(bidId)).quantity;
 
-  //     const aliceBalanceBefore = await tokenContract.balanceOf(alice.address);
+      // Mint some tokens to the auction contract
+      const auctionContractAddress = await auctionContract.getAddress();
+      const tokenAmount = parseEther("100");
+      await tokenContract.mint(auctionContractAddress, tokenAmount);
 
-  //     await expect(auctionContract.connect(alice).claimTokens(bidId))
-  //       .to.emit(auctionContract, "TokensClaimed")
-  //       .withArgs(alice.address, quantity);
+      const aliceBalanceBefore = await tokenContract.balanceOf(alice.address);
 
-  //     const bid = await auctionContract.bids(bidId);
-  //     expect(bid.quantity).to.equal(0);
+      await expect(auctionContract.connect(alice).claimTokens(bidId, proofs[alice.address]))
+        .to.emit(auctionContract, "TokensClaimed")
+        .withArgs(alice.address, quantity);
 
-  //     const aliceBalanceAfter = await tokenContract.balanceOf(alice.address);
-  //     expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + quantity);
-  //   });
-  // });
+      const bid = await auctionContract.bids(bidId);
+      expect(bid.quantity).to.equal(0);
+
+      const aliceBalanceAfter = await tokenContract.balanceOf(alice.address);
+      expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + quantity);
+    });
+  });
 });

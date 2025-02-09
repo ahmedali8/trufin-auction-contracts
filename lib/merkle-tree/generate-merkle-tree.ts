@@ -19,6 +19,6 @@ export function generateMerkleTree(bids: { bidder: string; quantity: bigint }[])
 
   return {
     root: tree.root,
-    proofs,
+    proofs, // bidder => proof
   };
 }
