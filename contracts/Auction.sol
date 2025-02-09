@@ -23,14 +23,26 @@ contract Auction is Ownable {
 
     AuctionState public auction;
     mapping(uint256 bidId => BidState bid) public bids;
-    uint256 public nextBidId;
+    uint256 public nextBidId = 1; // to save gas
 
     error AuctionAlreadyExists();
     error InvalidAuctionTime();
     error InvalidTokenAddress();
     error InvalidTotalTokens();
+    error AuctionNotActive();
+    error InvalidBidQuantity();
+    error InvalidBidPrice();
+    error OwnerCannotPlaceABid();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
+    event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
+
+    modifier onlyDuringAuction() {
+        if (block.timestamp < auction.startTime || block.timestamp > auction.endTime) {
+            revert AuctionNotActive();
+        }
+        _;
+    }
 
     // TODO: Functions to add:
     // startAuction -> only callable by the owner, starts the auction
@@ -70,6 +82,24 @@ contract Auction is Ownable {
     }
 
     // placeBid -> only callable by non-owner, places a bid
+    function placeBid(uint256 quantity, uint256 pricePerToken) external payable onlyDuringAuction {
+        if (_msgSender() == owner()) {
+            revert OwnerCannotPlaceABid();
+        }
+        if (quantity == 0) {
+            revert InvalidBidQuantity();
+        }
+        if (pricePerToken == 0 || (quantity * pricePerToken) != msg.value) {
+            revert InvalidBidPrice();
+        }
+
+        bids[nextBidId] =
+            BidState({ bidder: _msgSender(), quantity: quantity, pricePerToken: pricePerToken });
+
+        emit BidPlaced(nextBidId, _msgSender(), quantity, pricePerToken);
+        nextBidId++;
+    }
+
     // endAuction -> callable by anyone, finalizes the auction
     // claimTokens -> only callable by the winners to claim tokens and pay money in eth
 
