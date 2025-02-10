@@ -371,57 +371,46 @@ describe("Auction Tests", function () {
   });
 
   describe("#endAuction", function () {
-    const timeBuffer = 5;
-    let startTime = 0;
-    let endTime = 0;
+    let startTime = 0,
+      endTime = 0;
 
     beforeEach(async function () {
-      const tokenAddress = await tokenContract.getAddress();
-      const totalTokens = parseEther("10");
-      startTime = (await time.latest()) + timeBuffer;
-      endTime = startTime + time.duration.minutes(10);
-      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-        value: SECURITY_DEPOSIT,
+      ({ startTime, endTime } = await approveAndStartAuction());
+      await advanceToAuctionEnd(endTime);
+    });
+
+    context("when prerequisites are not met", function () {
+      it("should revert if merkle root has not been submitted", async function () {
+        await expect(auctionContract.connect(owner).endAuction()).to.be.revertedWithCustomError(
+          auctionContract,
+          "InvalidMerkleRoot"
+        );
       });
 
-      // Move time forward to the end of the auction
-      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+      it("should revert if the verification time is not over", async function () {
+        await auctionContract.connect(owner).submitMerkleRoot(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH);
+
+        await expect(auctionContract.connect(alice).endAuction()).to.be.revertedWithCustomError(
+          auctionContract,
+          "VerificationPeriodNotOver"
+        );
+      });
     });
 
-    it("should revert if merkle root has not been submitted", async function () {
-      await expect(auctionContract.connect(owner).endAuction()).to.be.revertedWithCustomError(
-        auctionContract,
-        "InvalidMerkleRoot"
-      );
-    });
+    context("when successfully ending the auction", function () {
+      beforeEach(async function () {
+        await auctionContract.connect(owner).submitMerkleRoot(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH);
+        await time.increase(VERIFICATION_WINDOW + TIME_BUFFER);
+      });
 
-    it("should revert if the verification time is not over", async function () {
-      const merkleRoot = zeroPadBytes("0x01", 32);
-      const ipfsHash = "QmTestHash";
+      it("should emit an event and update state", async function () {
+        await expect(auctionContract.connect(alice).endAuction())
+          .to.emit(auctionContract, "AuctionFinalized")
+          .withArgs(alice.address);
 
-      await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
-
-      await expect(auctionContract.connect(alice).endAuction()).to.be.revertedWithCustomError(
-        auctionContract,
-        "VerificationPeriodNotOver"
-      );
-    });
-
-    it("should end the auction successfully", async function () {
-      const merkleRoot = zeroPadBytes("0x01", 32);
-      const ipfsHash = "QmTestHash";
-
-      await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
-
-      await time.increase(VERIFICATION_WINDOW + timeBuffer);
-
-      await expect(auctionContract.connect(alice).endAuction())
-        .to.emit(auctionContract, "AuctionFinalized")
-        .withArgs(alice.address);
-
-      const auctionState = await auctionContract.auction();
-      expect(auctionState.isFinalized).to.equal(true);
+        const auctionState = await auctionContract.auction();
+        expect(auctionState.isFinalized).to.equal(true);
+      });
     });
   });
 
