@@ -585,6 +585,7 @@ describe("Auction Tests", function () {
     });
 
     it("should revert if the bid does not exist", async function () {
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
       await auctionContract.connect(bob).endAuction();
 
       const bidId = 999; // Non-existent bid ID
@@ -595,6 +596,7 @@ describe("Auction Tests", function () {
     });
 
     it("should revert if tokens are already claimed", async function () {
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
       await auctionContract.connect(bob).endAuction();
 
       const bidId = 1;
@@ -614,6 +616,7 @@ describe("Auction Tests", function () {
     });
 
     it("should revert when winner tries to claim eth", async function () {
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
       await auctionContract.connect(bob).endAuction();
       const bidId = 1;
 
@@ -627,6 +630,7 @@ describe("Auction Tests", function () {
     });
 
     it("should revert when non-winner tries to claim tokens", async function () {
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
       await auctionContract.connect(bob).endAuction();
 
       const caller = accounts[0];
@@ -641,7 +645,8 @@ describe("Auction Tests", function () {
       ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
     });
 
-    it("allows winner to claim tokens successfully", async function () {
+    it("should allow winner to claim tokens successfully", async function () {
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
       await auctionContract.connect(bob).endAuction();
       const bidId = 1;
 
@@ -665,7 +670,8 @@ describe("Auction Tests", function () {
       expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + _quantity);
     });
 
-    it("allows non-winner to claim eth successfully", async function () {
+    it("should allow non-winner to claim eth successfully", async function () {
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
       await auctionContract.connect(bob).endAuction();
       const bidId = 3;
       const _quantity = 0; // non-winner
