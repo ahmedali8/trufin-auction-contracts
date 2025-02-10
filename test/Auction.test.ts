@@ -341,6 +341,19 @@ describe("Auction Tests", function () {
       ).to.be.revertedWithCustomError(auctionContract, "InvalidIPFSHash");
     });
 
+    it("should revert if merkle root is submitted twice", async function () {
+      await time.increaseTo(endTime + time.duration.seconds(10));
+
+      const merkleRoot = zeroPadBytes("0x01", 32);
+      const ipfsHash = "QmTestHash";
+
+      await auctionContract.submitMerkleRoot(merkleRoot, ipfsHash);
+
+      await expect(
+        auctionContract.submitMerkleRoot(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
+    });
+
     it("should submit the merkle root and ipfs hash successfully", async function () {
       // Move time forward to the end of the auction
       await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
