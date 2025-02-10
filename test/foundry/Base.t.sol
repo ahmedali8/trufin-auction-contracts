@@ -3,7 +3,7 @@ pragma solidity >=0.8.23 <0.9.0;
 
 import { Test } from "forge-std/src/Test.sol";
 
-import { Lock } from "contracts/Lock.sol";
+import { Auction } from "contracts/Auction.sol";
 
 import { Users } from "./utils/Types.sol";
 
@@ -19,7 +19,7 @@ abstract contract Base_Test is Test {
                              TEST CONTRACTS
     //////////////////////////////////////////////////////////////*/
 
-    Lock internal lock;
+    Auction internal auction;
 
     /*//////////////////////////////////////////////////////////////
                             SET-UP FUNCTION
@@ -29,14 +29,14 @@ abstract contract Base_Test is Test {
     function setUp() public virtual {
         // Create users for testing.
         users = Users({
-            deployer: createUser("Deployer"),
+            owner: createUser("Owner"),
             alice: createUser("Alice"),
             bob: createUser("Bob"),
             eve: createUser("Eve")
         });
 
-        // Make the deployer the default caller in all subsequent tests.
-        vm.startPrank({ msgSender: users.deployer });
+        // Make the owner the default caller in all subsequent tests.
+        vm.startPrank({ msgSender: users.owner });
     }
 
     /*//////////////////////////////////////////////////////////////
