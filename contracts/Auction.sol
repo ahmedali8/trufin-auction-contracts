@@ -4,6 +4,7 @@ pragma solidity ^0.8.23;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "hardhat/console.sol";
 
 contract Auction is Ownable {
     struct AuctionState {
@@ -42,12 +43,14 @@ contract Auction is Ownable {
     error BidDoesNotExist();
     error TokensAlreadyClaimed();
     error InvalidProof();
+    error EthTransferFailed();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
     event MerkleRootSubmitted(bytes32 merkleRoot, string ipfsHash);
     event AuctionFinalized(address caller);
     event TokensClaimed(address bidder, uint256 quantity);
+    event ETHClaimed(address bidder, uint256 amount);
 
     modifier onlyDuringAuction() {
         if (block.timestamp < auction.startTime || block.timestamp > auction.endTime) {
@@ -163,8 +166,8 @@ contract Auction is Ownable {
         emit AuctionFinalized(_msgSender());
     }
 
-    // claimTokens -> only callable by the winners to claim tokens and pay money in eth
-    function claimTokens(uint256 bidId, bytes32[] calldata proof) external {
+    // claim -> only callable by the winners to claim tokens and pay money in eth
+    function claim(uint256 bidId, uint256 quantity, bytes32[] calldata proof) external {
         if (!auction.isFinalized) {
             revert AuctionNotFinalized();
         }
@@ -176,15 +179,26 @@ contract Auction is Ownable {
         }
 
         // Verify the Merkle proof
-        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(_msgSender(), _bid.quantity))));
+        // If user gives false quantity then merkle proof would fail
+        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(_msgSender(), quantity))));
         if (!MerkleProof.verify(proof, auction.merkleRoot, _leaf)) revert InvalidProof();
 
         // update state
         delete bids[bidId];
 
-        IERC20(auction.token).transfer(_msgSender(), _bid.quantity);
+        if (quantity == 0) {
+            // it means user is non-winner and would claim eth
+            uint256 _ethAmount = (_bid.quantity * _bid.pricePerToken) / 1e18;
 
-        emit TokensClaimed(_msgSender(), _bid.quantity);
+            (bool success,) = _bid.bidder.call{ value: _ethAmount }("");
+            if (!success) {
+                revert EthTransferFailed();
+            }
+            emit ETHClaimed(_msgSender(), _ethAmount);
+        } else {
+            IERC20(auction.token).transfer(_msgSender(), _bid.quantity);
+            emit TokensClaimed(_msgSender(), _bid.quantity);
+        }
     }
 
     constructor(address _initialOwner) Ownable(_initialOwner) { }
