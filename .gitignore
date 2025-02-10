@@ -42,6 +42,7 @@ artifacts
 cache
 .deps
 types
+!contracts/types
 cache_hardhat
 dodoc
 
