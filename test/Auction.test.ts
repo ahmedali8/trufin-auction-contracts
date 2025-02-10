@@ -16,6 +16,7 @@ import { ZERO_BYTES32 } from "../utils/constants";
 import { loadFixtures } from "./shared/fixtures";
 
 const SECURITY_DEPOSIT = parseUnits("5", 17); // 0.5 ETH
+const VERIFICATION_WINDOW = time.duration.hours(2);
 
 describe("Auction Tests", function () {
   // signers
@@ -269,6 +270,25 @@ describe("Auction Tests", function () {
         auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice })
       ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
     });
+
+    it("should measure gas cost for placing multiple bids", async function () {
+      const bids = [];
+      for (let i = 0; i < 100; i++) {
+        bids.push(
+          auctionContract
+            .connect(accounts[i % accounts.length])
+            .placeBid(parseEther("1"), parseEther("0.1"), {
+              value: parseEther("0.1"),
+            })
+        );
+      }
+      const tx = await Promise.all(bids);
+      const gasUsed = await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
+      // console.log(
+      //   "Gas Used for 100 bids:",
+      //   gasUsed.reduce((a, b) => a + b, 0n) / BigInt(gasUsed.length)
+      // );
+    });
   });
 
   describe("#submitMerkleRoot", function () {
@@ -397,11 +417,25 @@ describe("Auction Tests", function () {
       );
     });
 
+    it("should revert if the verification time is not over", async function () {
+      const merkleRoot = zeroPadBytes("0x01", 32);
+      const ipfsHash = "QmTestHash";
+
+      await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
+
+      await expect(auctionContract.connect(alice).endAuction()).to.be.revertedWithCustomError(
+        auctionContract,
+        "VerificationPeriodNotOver"
+      );
+    });
+
     it("should end the auction successfully", async function () {
       const merkleRoot = zeroPadBytes("0x01", 32);
       const ipfsHash = "QmTestHash";
 
       await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
+
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
 
       await expect(auctionContract.connect(alice).endAuction())
         .to.emit(auctionContract, "AuctionFinalized")
