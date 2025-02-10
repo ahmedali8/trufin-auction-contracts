@@ -27,6 +27,10 @@ contract Auction is Ownable {
     mapping(uint256 bidId => BidState bid) public bids;
     uint256 public nextBidId = 1; // to save gas
 
+    bool public isAuctioneerSlashed = false;
+    uint256 public verificationDeadline; // Timestamp when verification period ends
+    uint256 public constant VERIFICATION_WINDOW = 2 hours; // 2-hour window
+
     error AuctionAlreadyExists();
     error InvalidAuctionTime();
     error InvalidTokenAddress();
@@ -74,7 +78,9 @@ contract Auction is Ownable {
         _;
     }
 
-    error InvalidDisputeDeposit();
+    uint256 public constant SECURITY_DEPOSIT = 0.5 ether; // Penalty to prevent fraud
+
+    error InvalidSecurityDeposit();
 
     // TODO: Functions to add:
     // startAuction -> only callable by the owner, starts the auction
@@ -88,8 +94,8 @@ contract Auction is Ownable {
         payable
         onlyOwner
     {
-        // take the dispute deposit as a security deposit from the auctioneer
-        if (msg.value != DISPUTE_DEPOSIT) revert InvalidDisputeDeposit();
+        // take the security deposit from the auctioneer to prevent fraud
+        if (msg.value != SECURITY_DEPOSIT) revert InvalidSecurityDeposit();
         if (auction.token != address(0)) {
             revert AuctionAlreadyExists();
         }
@@ -147,6 +153,10 @@ contract Auction is Ownable {
         onlyAfterAuction
         isNotFinalized
     {
+        if (auction.merkleRoot != bytes32(0)) {
+            revert InvalidMerkleRoot(); // Auctioneer can only submit once
+        }
+
         if (merkleRoot == bytes32(0)) {
             revert InvalidMerkleRoot();
         }
@@ -157,8 +167,12 @@ contract Auction is Ownable {
         auction.merkleRoot = merkleRoot;
         auction.ipfsHash = ipfsHash;
 
+        verificationDeadline = block.timestamp + VERIFICATION_WINDOW; // Set deadline
+
         emit MerkleRootSubmitted(merkleRoot, ipfsHash);
     }
+
+    error VerificationPeriodNotOver();
 
     // there would be a window between the call of submitMerkleRoot and endAuction that would act as
     // the dispute period for the auction set to 2 hours
@@ -168,6 +182,17 @@ contract Auction is Ownable {
         if (auction.merkleRoot == bytes32(0)) {
             revert InvalidMerkleRoot();
         }
+
+        // Prevent early finalization
+        if (block.timestamp <= verificationDeadline) {
+            revert VerificationPeriodNotOver();
+        }
+
+        if (!isAuctioneerSlashed) {
+            // refund the security deposit of owner
+            payable(owner()).transfer(SECURITY_DEPOSIT);
+        }
+
         auction.isFinalized = true;
         emit AuctionFinalized(_msgSender());
     }
@@ -207,6 +232,32 @@ contract Auction is Ownable {
         }
     }
 
+    error AuctionMustHaveAnInitialMerkleRoot();
+    error VerificationWindowExpired();
+
+    event MerkleRootUpdated(bytes32 oldRoot, bytes32 newRoot, address verifier);
+    event AuctioneerPenalized(uint256 penaltyAmount);
+
+    function slash(bytes32 newRoot, string calldata newIpfsHash) external onlyVerifier {
+        if (block.timestamp > verificationDeadline) revert VerificationWindowExpired(); // Enforce
+            // 2-hour limit
+
+        if (auction.merkleRoot == bytes32(0)) revert AuctionMustHaveAnInitialMerkleRoot();
+
+        bytes32 _oldRoot = auction.merkleRoot;
+
+        auction.merkleRoot = newRoot;
+        auction.ipfsHash = newIpfsHash;
+
+        isAuctioneerSlashed = true;
+
+        // Reward verifier for catching fraud
+        payable(_msgSender()).transfer(SECURITY_DEPOSIT);
+
+        emit MerkleRootUpdated(_oldRoot, newRoot, _msgSender());
+        emit AuctioneerPenalized(SECURITY_DEPOSIT);
+    }
+
     constructor(address _initialOwner, address _initialVerifier) Ownable(_initialOwner) {
         if (_initialVerifier == address(0)) {
             revert ZeroAddress();
@@ -214,67 +265,6 @@ contract Auction is Ownable {
         verifier = _initialVerifier;
 
         emit VerifierSet(_initialVerifier);
-    }
-
-    struct Dispute {
-        bytes32 proposedRoot;
-        address challenger;
-        bool resolved;
-    }
-
-    uint256 public constant DISPUTE_DEPOSIT = 0.1 ether;
-    Dispute public dispute;
-
-    event AuctionChallenged(address indexed challenger, bytes32 proposedRoot);
-    event AuctioneerPenalized(uint256 penaltyAmount);
-    event ChallengerRewarded(address indexed challenger, uint256 rewardAmount);
-    event ChallengeFailed(address indexed challenger, uint256 stakeAmount);
-
-    error RootDoesNotMatchSubmittedValue();
-    error AuctionAlreadyChallenged();
-    error InsufficientChallengeStake();
-    error InvalidVerifierAddress();
-    error NoActiveDispute();
-    error DisputeAlreadyResolved();
-
-    function challengeAuction(bytes32 proposedRoot) external payable onlyAfterAuction {
-        if (dispute.challenger != address(0)) {
-            revert AuctionAlreadyChallenged();
-        }
-        if (msg.value != DISPUTE_DEPOSIT) {
-            revert InsufficientChallengeStake();
-        }
-
-        dispute = Dispute({ proposedRoot: proposedRoot, challenger: _msgSender(), resolved: false });
-
-        emit AuctionChallenged(_msgSender(), proposedRoot);
-    }
-
-    // Verifier could be a third-party (DAO, Chainlink Oracle) settles it.
-    function resolveChallenge(bool isProposedRootValid) external onlyVerifier {
-        if (dispute.challenger == address(0)) {
-            revert NoActiveDispute();
-        }
-        if (dispute.resolved) {
-            revert DisputeAlreadyResolved();
-        }
-
-        if (isProposedRootValid) {
-            dispute.resolved = true;
-
-            // refund the eth + send the security deposit of auctioneer to challenger
-            payable(dispute.challenger).transfer(2 * DISPUTE_DEPOSIT);
-
-            // reset the dispute state
-
-            emit AuctioneerPenalized(DISPUTE_DEPOSIT);
-            emit ChallengerRewarded(dispute.challenger, 2 * DISPUTE_DEPOSIT);
-        } else {
-            // Challenger was wrong, give dispute deposit to auctioneer
-            payable(owner()).transfer(DISPUTE_DEPOSIT);
-            dispute.resolved = true;
-            emit ChallengeFailed(dispute.challenger, DISPUTE_DEPOSIT);
-        }
     }
 
     address public verifier; // Trusted verifier (DAO, multisig, or Chainlink OCR)
