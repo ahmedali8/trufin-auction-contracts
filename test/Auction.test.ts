@@ -32,11 +32,6 @@ describe("Auction Tests", function () {
 
   before(async function () {
     [owner, verifier, alice, bob, ...accounts] = await ethers.getSigners();
-    // owner = signers[0];
-    // verifier = signers[1];
-    // alice = signers[2];
-    // bob = signers[3];
-    // accounts = signers.slice(4);
   });
 
   beforeEach(async function () {
@@ -443,6 +438,91 @@ describe("Auction Tests", function () {
 
       const auctionState = await auctionContract.auction();
       expect(auctionState.isFinalized).to.equal(true);
+    });
+  });
+
+  describe("#slash", function () {
+    const timeBuffer = 5;
+    let startTime = 0;
+    let endTime = 0;
+
+    beforeEach(async function () {
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("10");
+      startTime = (await time.latest()) + timeBuffer;
+      endTime = startTime + time.duration.minutes(10);
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+        value: SECURITY_DEPOSIT,
+      });
+    });
+
+    it("should revert if not called by the verifier", async function () {
+      await expect(
+        auctionContract.connect(alice).slash(ZERO_BYTES32, "")
+      ).to.be.revertedWithCustomError(auctionContract, "OnlyVerifierCanResolveDispute");
+    });
+
+    it("should revert if the merkle root is invalid", async function () {
+      await expect(
+        auctionContract.connect(verifier).slash(ZERO_BYTES32, "abs")
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
+    });
+
+    it("should revert if the ipfs hash is invalid", async function () {
+      const merkleRoot = zeroPadBytes("0x01", 32);
+      await expect(
+        auctionContract.connect(verifier).slash(merkleRoot, "")
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidIPFSHash");
+    });
+
+    it("should revert if the merkle root is not set yet", async function () {
+      const merkleRoot = zeroPadBytes("0x01", 32);
+      const ipfsHash = "QmTestHash";
+
+      await expect(
+        auctionContract.connect(verifier).slash(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "AuctionMustHaveAnInitialMerkleRoot");
+    });
+
+    it("should revert if the merkle is set but verification time hash expired", async function () {
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+
+      const merkleRoot = zeroPadBytes("0x01", 32);
+      const ipfsHash = "QmTestHash";
+
+      await auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash);
+
+      // time is over
+      await time.increase(VERIFICATION_WINDOW + timeBuffer);
+
+      await expect(
+        auctionContract.connect(verifier).slash(merkleRoot, ipfsHash)
+      ).to.be.revertedWithCustomError(auctionContract, "VerificationWindowExpired");
+    });
+
+    it("should slash the owner and emit events", async function () {
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+
+      const oldMerkleRoot = zeroPadBytes("0x01", 32);
+      const oldIpfsHash = "QmTestHash";
+
+      await auctionContract.connect(owner).submitMerkleRoot(oldMerkleRoot, oldIpfsHash);
+
+      const newMerkleRoot = zeroPadBytes("0x01", 32);
+      const newIpfsHash = "QmTestHash";
+
+      const balBefore = await ethers.provider.getBalance(verifier.address);
+
+      const gasFee = await getGasFee(
+        auctionContract.connect(verifier).slash(newMerkleRoot, newIpfsHash)
+      );
+
+      const balAfter = await ethers.provider.getBalance(verifier.address);
+
+      expect(balAfter).to.approximately(balBefore + SECURITY_DEPOSIT, gasFee);
     });
   });
 

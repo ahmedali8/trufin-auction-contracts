@@ -235,14 +235,22 @@ contract Auction is Ownable {
     error AuctionMustHaveAnInitialMerkleRoot();
     error VerificationWindowExpired();
 
-    event MerkleRootUpdated(bytes32 oldRoot, bytes32 newRoot, address verifier);
+    event MerkleRootUpdated(bytes32 oldRoot, bytes32 newRoot);
     event AuctioneerPenalized(uint256 penaltyAmount);
 
     function slash(bytes32 newRoot, string calldata newIpfsHash) external onlyVerifier {
-        if (block.timestamp > verificationDeadline) revert VerificationWindowExpired(); // Enforce
-            // 2-hour limit
+        if (newRoot == bytes32(0)) {
+            revert InvalidMerkleRoot();
+        }
+
+        if (bytes(newIpfsHash).length == 0) {
+            revert InvalidIPFSHash();
+        }
 
         if (auction.merkleRoot == bytes32(0)) revert AuctionMustHaveAnInitialMerkleRoot();
+
+        // Enforce 2-hour limit
+        if (block.timestamp > verificationDeadline) revert VerificationWindowExpired();
 
         bytes32 _oldRoot = auction.merkleRoot;
 
@@ -252,9 +260,12 @@ contract Auction is Ownable {
         isAuctioneerSlashed = true;
 
         // Reward verifier for catching fraud
-        payable(_msgSender()).transfer(SECURITY_DEPOSIT);
+        (bool success,) = _msgSender().call{ value: SECURITY_DEPOSIT }("");
+        if (!success) {
+            revert EthTransferFailed();
+        }
 
-        emit MerkleRootUpdated(_oldRoot, newRoot, _msgSender());
+        emit MerkleRootUpdated(_oldRoot, newRoot);
         emit AuctioneerPenalized(SECURITY_DEPOSIT);
     }
 
@@ -269,8 +280,12 @@ contract Auction is Ownable {
 
     address public verifier; // Trusted verifier (DAO, multisig, or Chainlink OCR)
 
+    error OnlyVerifierCanResolveDispute();
+
     modifier onlyVerifier() {
-        require(_msgSender() == verifier, "Only verifier can resolve disputes");
+        if (_msgSender() != verifier) {
+            revert OnlyVerifierCanResolveDispute();
+        }
         _;
     }
 
