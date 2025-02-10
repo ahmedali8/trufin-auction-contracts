@@ -44,6 +44,7 @@ contract Auction is Ownable {
     error TokensAlreadyClaimed();
     error InvalidProof();
     error EthTransferFailed();
+    error ZeroAddress();
 
     event AuctionStarted(address token, uint256 totalTokens, uint256 startTime, uint256 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint256 quantity, uint256 pricePerToken);
@@ -73,6 +74,8 @@ contract Auction is Ownable {
         _;
     }
 
+    error InvalidDisputeDeposit();
+
     // TODO: Functions to add:
     // startAuction -> only callable by the owner, starts the auction
     function startAuction(
@@ -82,8 +85,11 @@ contract Auction is Ownable {
         uint256 endTime
     )
         external
+        payable
         onlyOwner
     {
+        // take the dispute deposit as a security deposit from the auctioneer
+        if (msg.value != DISPUTE_DEPOSIT) revert InvalidDisputeDeposit();
         if (auction.token != address(0)) {
             revert AuctionAlreadyExists();
         }
@@ -201,5 +207,82 @@ contract Auction is Ownable {
         }
     }
 
-    constructor(address _initialOwner) Ownable(_initialOwner) { }
+    constructor(address _initialOwner, address _initialVerifier) Ownable(_initialOwner) {
+        if (_initialVerifier == address(0)) {
+            revert ZeroAddress();
+        }
+        verifier = _initialVerifier;
+
+        emit VerifierSet(_initialVerifier);
+    }
+
+    struct Dispute {
+        bytes32 proposedRoot;
+        address challenger;
+        bool resolved;
+    }
+
+    uint256 public constant DISPUTE_DEPOSIT = 0.1 ether;
+    Dispute public dispute;
+
+    event AuctionChallenged(address indexed challenger, bytes32 proposedRoot);
+    event AuctioneerPenalized(uint256 penaltyAmount);
+    event ChallengerRewarded(address indexed challenger, uint256 rewardAmount);
+    event ChallengeFailed(address indexed challenger, uint256 stakeAmount);
+
+    error RootDoesNotMatchSubmittedValue();
+    error AuctionAlreadyChallenged();
+    error InsufficientChallengeStake();
+    error InvalidVerifierAddress();
+    error NoActiveDispute();
+    error DisputeAlreadyResolved();
+
+    function challengeAuction(bytes32 proposedRoot) external payable onlyAfterAuction {
+        if (dispute.challenger != address(0)) {
+            revert AuctionAlreadyChallenged();
+        }
+        if (msg.value != DISPUTE_DEPOSIT) {
+            revert InsufficientChallengeStake();
+        }
+
+        dispute = Dispute({ proposedRoot: proposedRoot, challenger: _msgSender(), resolved: false });
+
+        emit AuctionChallenged(_msgSender(), proposedRoot);
+    }
+
+    // Verifier could be a third-party (DAO, Chainlink Oracle) settles it.
+    function resolveChallenge(bool isProposedRootValid) external onlyVerifier {
+        if (dispute.challenger == address(0)) {
+            revert NoActiveDispute();
+        }
+        if (dispute.resolved) {
+            revert DisputeAlreadyResolved();
+        }
+
+        if (isProposedRootValid) {
+            dispute.resolved = true;
+
+            // refund the eth + send the security deposit of auctioneer to challenger
+            payable(dispute.challenger).transfer(2 * DISPUTE_DEPOSIT);
+
+            // reset the dispute state
+
+            emit AuctioneerPenalized(DISPUTE_DEPOSIT);
+            emit ChallengerRewarded(dispute.challenger, 2 * DISPUTE_DEPOSIT);
+        } else {
+            // Challenger was wrong, give dispute deposit to auctioneer
+            payable(owner()).transfer(DISPUTE_DEPOSIT);
+            dispute.resolved = true;
+            emit ChallengeFailed(dispute.challenger, DISPUTE_DEPOSIT);
+        }
+    }
+
+    address public verifier; // Trusted verifier (DAO, multisig, or Chainlink OCR)
+
+    modifier onlyVerifier() {
+        require(_msgSender() == verifier, "Only verifier can resolve disputes");
+        _;
+    }
+
+    event VerifierSet(address verifier);
 }
