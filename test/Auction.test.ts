@@ -41,9 +41,11 @@ describe("Auction Tests", function () {
 
     // Mint some tokens to the wallets
     const tokenAmount = parseEther("1000000");
-    await tokenContract.mint(owner.address, tokenAmount);
-    await tokenContract.mint(alice.address, tokenAmount);
-    await tokenContract.mint(bob.address, tokenAmount);
+    await Promise.all([
+      tokenContract.mint(owner.address, tokenAmount),
+      tokenContract.mint(alice.address, tokenAmount),
+      tokenContract.mint(bob.address, tokenAmount),
+    ]);
   });
 
   describe("#constructor", function () {
