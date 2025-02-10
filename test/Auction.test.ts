@@ -20,12 +20,14 @@ const VERIFICATION_WINDOW = time.duration.hours(2);
 const TIME_BUFFER = 5; // Buffer for timing adjustments
 const AUCTION_DURATION = time.duration.minutes(10); // Auction lasts 10 minutes (just for example)
 const TOKEN_AMOUNT = parseEther("1000000"); // Large token amount for tests
-const INVALID_PROOF = ["0xa7a72291e3c368d9052a4baa918856f83eca42f8862b56ad9b17bf3cb8038885"];
-const TEST_MERKLE_ROOT = zeroPadBytes("0x01", 32);
-const TEST_IPFS_HASH = "QmTestHash";
 const TOTAL_TOKENS = parseEther("10");
 const TOKEN_QUANTITY = parseEther("100");
 const PRICE_PER_TOKEN = parseUnits("1", 17); // 0.1 ETH per token
+const INVALID_MERKLE_ROOT = ZERO_BYTES32;
+const INVALID_IPFS_HASH = "";
+const DUMMY_MERKLE_ROOT = zeroPadBytes("0x01", 32);
+const DUMMY_IPFS_HASH = "Test IPFS Hash";
+const INVALID_PROOF = ["0xa7a72291e3c368d9052a4baa918856f83eca42f8862b56ad9b17bf3cb8038885"];
 
 describe("Auction Tests", function () {
   // signers
@@ -37,9 +39,23 @@ describe("Auction Tests", function () {
 
   // contracts
   let auctionContract: Auction;
-  let auctionAddress: string;
   let tokenContract: MockToken;
+  let auctionAddress: string;
   let tokenAddress: string;
+
+  /// HELPER FUNCTIONS ///
+
+  async function approveAndStartAuction() {
+    const { startTime, endTime } = await getStartAndEndTime();
+    await tokenContract.connect(owner).approve(auctionContract.getAddress(), TOTAL_TOKENS);
+    await auctionContract
+      .connect(owner)
+      .startAuction(tokenAddress, TOTAL_TOKENS, startTime, endTime, {
+        value: SECURITY_DEPOSIT,
+      });
+
+    return { startTime, endTime };
+  }
 
   before(async function () {
     [owner, verifier, alice, bob, ...accounts] = await ethers.getSigners();
@@ -130,8 +146,7 @@ describe("Auction Tests", function () {
 
     context("when params are valid", function () {
       it("should revert if tokens not approved", async function () {
-        const startTime = await getStartTime();
-        const endTime = startTime + time.duration.minutes(10);
+        const { startTime, endTime } = await getStartAndEndTime();
 
         await expect(
           auctionContract.startAuction(tokenAddress, TOTAL_TOKENS, startTime, endTime, {
@@ -145,8 +160,7 @@ describe("Auction Tests", function () {
           endTime = 0;
 
         beforeEach(async function () {
-          startTime = await getStartTime();
-          endTime = startTime + time.duration.minutes(10);
+          ({ startTime, endTime } = await getStartAndEndTime());
 
           // Approve the auction contract to spend the tokens
           await tokenContract.approve(auctionContract.getAddress(), TOTAL_TOKENS);
@@ -189,12 +203,7 @@ describe("Auction Tests", function () {
       endTime = 0;
 
     beforeEach(async function () {
-      startTime = await getStartTime();
-      endTime = startTime + time.duration.minutes(10);
-      await tokenContract.approve(auctionContract.getAddress(), TOTAL_TOKENS);
-      await auctionContract.startAuction(tokenAddress, TOTAL_TOKENS, startTime, endTime, {
-        value: SECURITY_DEPOSIT,
-      });
+      ({ startTime, endTime } = await approveAndStartAuction());
 
       await advanceToAuctionStart(startTime);
     });
@@ -286,102 +295,78 @@ describe("Auction Tests", function () {
   });
 
   describe("#submitMerkleRoot", function () {
-    const timeBuffer = 5;
-    let startTime = 0;
-    let endTime = 0;
+    let startTime = 0,
+      endTime = 0;
 
     beforeEach(async function () {
-      const tokenAddress = await tokenContract.getAddress();
-      const totalTokens = parseEther("10");
-      startTime = (await time.latest()) + timeBuffer;
-      endTime = startTime + time.duration.minutes(10);
-      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-        value: SECURITY_DEPOSIT,
+      ({ startTime, endTime } = await approveAndStartAuction());
+    });
+
+    context("when called by non-owner", function () {
+      it("should revert", async function () {
+        await expect(
+          auctionContract.connect(alice).submitMerkleRoot(INVALID_MERKLE_ROOT, DUMMY_IPFS_HASH)
+        ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
       });
     });
 
-    it("should revert if not called by the owner", async function () {
-      const merkleRoot = ZERO_BYTES32;
-      const ipfsHash = "QmTestHash";
+    context("when auction is not finalized", function () {
+      it("should revert if its called before the auction has started", async function () {
+        await expect(
+          auctionContract.connect(owner).submitMerkleRoot(INVALID_MERKLE_ROOT, DUMMY_IPFS_HASH)
+        ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
+      });
 
-      await expect(
-        auctionContract.connect(alice).submitMerkleRoot(merkleRoot, ipfsHash)
-      ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
+      it("should revert if its called during the auction", async function () {
+        // Move time forward to the start of the auction
+        await advanceToAuctionStart(startTime);
+
+        await expect(
+          auctionContract.connect(owner).submitMerkleRoot(INVALID_MERKLE_ROOT, DUMMY_IPFS_HASH)
+        ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
+      });
     });
 
-    it("should revert if its called before the auction has started", async function () {
-      const merkleRoot = ZERO_BYTES32;
-      const ipfsHash = "QmTestHash";
+    context("when auction has ended", function () {
+      beforeEach(async function () {
+        await advanceToAuctionEnd(endTime);
+      });
 
-      await expect(
-        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
-      ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
-    });
+      context("when submitting invalid data", function () {
+        it("should revert if merkle root is invalid", async function () {
+          await expect(
+            auctionContract.connect(owner).submitMerkleRoot(INVALID_MERKLE_ROOT, INVALID_IPFS_HASH)
+          ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
+        });
 
-    it("should revert if its called during the auction", async function () {
-      // Move time forward to the start of the auction
-      await time.increaseTo(startTime + time.duration.minutes(5));
+        it("should revert if ipfs hash is invalid", async function () {
+          await expect(
+            auctionContract.connect(owner).submitMerkleRoot(DUMMY_MERKLE_ROOT, INVALID_IPFS_HASH)
+          ).to.be.revertedWithCustomError(auctionContract, "InvalidIPFSHash");
+        });
+      });
 
-      const merkleRoot = ZERO_BYTES32;
-      const ipfsHash = "QmTestHash";
+      context("when submitting invalid data", function () {
+        beforeEach(async function () {
+          await expect(
+            auctionContract.connect(owner).submitMerkleRoot(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH)
+          )
+            .to.emit(auctionContract, "MerkleRootSubmitted")
+            .withArgs(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH);
+        });
 
-      await expect(
-        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
-      ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
-    });
+        it("should revert if merkle root is submitted twice", async function () {
+          await expect(
+            auctionContract.submitMerkleRoot(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH)
+          ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
+        });
 
-    it("should revert if merkle root is invalid", async function () {
-      // Move time forward to the end of the auction
-      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
-
-      const merkleRoot = ZERO_BYTES32;
-      const ipfsHash = "";
-
-      await expect(
-        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
-      ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
-    });
-
-    it("should revert if ipfs hash is invalid", async function () {
-      // Move time forward to the end of the auction
-      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
-
-      const merkleRoot = zeroPadBytes("0x01", 32);
-      const ipfsHash = "";
-
-      await expect(
-        auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash)
-      ).to.be.revertedWithCustomError(auctionContract, "InvalidIPFSHash");
-    });
-
-    it("should revert if merkle root is submitted twice", async function () {
-      await time.increaseTo(endTime + time.duration.seconds(10));
-
-      const merkleRoot = zeroPadBytes("0x01", 32);
-      const ipfsHash = "QmTestHash";
-
-      await auctionContract.submitMerkleRoot(merkleRoot, ipfsHash);
-
-      await expect(
-        auctionContract.submitMerkleRoot(merkleRoot, ipfsHash)
-      ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
-    });
-
-    it("should submit the merkle root and ipfs hash successfully", async function () {
-      // Move time forward to the end of the auction
-      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
-
-      const merkleRoot = zeroPadBytes("0x01", 32);
-      const ipfsHash = "QmTestHash";
-
-      await expect(auctionContract.connect(owner).submitMerkleRoot(merkleRoot, ipfsHash))
-        .to.emit(auctionContract, "MerkleRootSubmitted")
-        .withArgs(merkleRoot, ipfsHash);
-
-      const auctionState = await auctionContract.auction();
-      expect(auctionState.merkleRoot).to.equal(merkleRoot);
-      expect(auctionState.ipfsHash).to.equal(ipfsHash);
+        it("should submit the merkle root and ipfs hash successfully", async function () {
+          const auctionState = await auctionContract.auction();
+          expect(auctionState.merkleRoot).to.equal(DUMMY_MERKLE_ROOT);
+          expect(auctionState.ipfsHash).to.equal(DUMMY_IPFS_HASH);
+        });
+      });
     });
   });
 
@@ -710,6 +695,17 @@ const getGasFee = async (tx: Promise<ContractTransactionResponse>) => {
 
 async function getStartTime() {
   return (await time.latest()) + TIME_BUFFER;
+}
+
+function getEndTime(startTime: number) {
+  return startTime + time.duration.minutes(10);
+}
+
+async function getStartAndEndTime() {
+  const startTime = await getStartTime();
+  const endTime = getEndTime(startTime);
+
+  return { startTime, endTime };
 }
 
 // gets the price
