@@ -15,7 +15,7 @@ import type { Auction, MockToken } from "../types";
 import { ZERO_BYTES32 } from "../utils/constants";
 import { loadFixtures } from "./shared/fixtures";
 
-const DISPUTE_DEPOSIT = parseUnits("1", 17); // 0.1 ETH
+const SECURITY_DEPOSIT = parseUnits("5", 17); // 0.5 ETH
 
 describe("Auction Tests", function () {
   // signers
@@ -59,17 +59,17 @@ describe("Auction Tests", function () {
   });
 
   describe("#startAuction", function () {
-    it("it should revert if not called by the owner", async function () {
+    it("should revert if not called by the owner", async function () {
       await expect(
         auctionContract
           .connect(alice)
           .startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738, {
-            value: DISPUTE_DEPOSIT,
+            value: SECURITY_DEPOSIT,
           })
       ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
     });
 
-    it("it should revert if deposit not paid", async function () {
+    it("should revert if deposit not paid", async function () {
       await expect(
         auctionContract
           .connect(alice)
@@ -79,40 +79,40 @@ describe("Auction Tests", function () {
       ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
     });
 
-    it("it should revert if the token address is the zero address", async function () {
+    it("should revert if the token address is the zero address", async function () {
       await expect(
         auctionContract.startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738, {
-          value: DISPUTE_DEPOSIT,
+          value: SECURITY_DEPOSIT,
         })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidTokenAddress");
     });
 
-    it("it should revert if the total tokens is zero", async function () {
+    it("should revert if the total tokens is zero", async function () {
       const tokenAddress = await tokenContract.getAddress();
 
       await expect(
         auctionContract.startAuction(tokenAddress, 0, 1739058738, 1739058738, {
-          value: DISPUTE_DEPOSIT,
+          value: SECURITY_DEPOSIT,
         })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidTotalTokens");
     });
 
-    it("it should revert if the start time is in the past", async function () {
+    it("should revert if the start time is in the past", async function () {
       const tokenAddress = await tokenContract.getAddress();
 
       await expect(
         auctionContract.startAuction(tokenAddress, parseEther("1"), 0, 1739058738, {
-          value: DISPUTE_DEPOSIT,
+          value: SECURITY_DEPOSIT,
         })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionTime");
     });
 
-    it("it should revert if the end time is before the start time", async function () {
+    it("should revert if the end time is before the start time", async function () {
       const tokenAddress = await tokenContract.getAddress();
 
       await expect(
         auctionContract.startAuction(tokenAddress, parseEther("1"), 1739058738, 1739058737, {
-          value: DISPUTE_DEPOSIT,
+          value: SECURITY_DEPOSIT,
         })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionTime");
     });
@@ -127,7 +127,7 @@ describe("Auction Tests", function () {
 
       await expect(
         auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-          value: DISPUTE_DEPOSIT,
+          value: SECURITY_DEPOSIT,
         })
       ).to.be.revertedWithCustomError(tokenContract, "ERC20InsufficientAllowance");
     });
@@ -145,7 +145,7 @@ describe("Auction Tests", function () {
 
       await expect(
         auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-          value: DISPUTE_DEPOSIT,
+          value: SECURITY_DEPOSIT,
         })
       )
         .to.emit(auctionContract, "AuctionStarted")
@@ -162,6 +162,28 @@ describe("Auction Tests", function () {
       expect(auctionState.ipfsHash).to.equal("");
       expect(auctionState.isFinalized).to.equal(false);
     });
+
+    it("should revert if auction is started again", async function () {
+      const timeBuffer = 5;
+
+      const tokenAddress = await tokenContract.getAddress();
+      const totalTokens = parseEther("1");
+      const startTime = (await time.latest()) + timeBuffer;
+      const endTime = startTime + time.duration.minutes(10);
+
+      // Approve the auction contract to spend the tokens
+      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
+
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+        value: SECURITY_DEPOSIT,
+      });
+
+      await expect(
+        auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+          value: SECURITY_DEPOSIT,
+        })
+      ).to.be.revertedWithCustomError(auctionContract, "AuctionAlreadyExists");
+    });
   });
 
   describe("#placeBid", function () {
@@ -174,7 +196,7 @@ describe("Auction Tests", function () {
       const endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-        value: DISPUTE_DEPOSIT,
+        value: SECURITY_DEPOSIT,
       });
 
       // Move time forward to the start of the auction
@@ -247,7 +269,7 @@ describe("Auction Tests", function () {
       endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-        value: DISPUTE_DEPOSIT,
+        value: SECURITY_DEPOSIT,
       });
     });
 
@@ -334,7 +356,7 @@ describe("Auction Tests", function () {
       endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-        value: DISPUTE_DEPOSIT,
+        value: SECURITY_DEPOSIT,
       });
 
       // Move time forward to the end of the auction
@@ -381,7 +403,7 @@ describe("Auction Tests", function () {
       endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
-        value: DISPUTE_DEPOSIT,
+        value: SECURITY_DEPOSIT,
       });
 
       // Move time forward to the start of the auction
