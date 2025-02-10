@@ -187,13 +187,14 @@ describe("Auction Tests", function () {
   });
 
   describe("#placeBid", function () {
-    beforeEach(async function () {
-      const timeBuffer = 5;
+    const timeBuffer = 5;
+    let endTime = 0;
 
+    beforeEach(async function () {
       const tokenAddress = await tokenContract.getAddress();
       const totalTokens = parseEther("10");
       const startTime = (await time.latest()) + timeBuffer;
-      const endTime = startTime + time.duration.minutes(10);
+      endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
       await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
         value: SECURITY_DEPOSIT,
@@ -254,6 +255,19 @@ describe("Auction Tests", function () {
       // assert the balance of the contract
       const contractBalAfter = await ethers.provider.getBalance(auctionContractAddress);
       expect(contractBalAfter).to.equal(totalPrice + contractBalBefore);
+    });
+
+    it("should revert if placing bid after auction ends", async function () {
+      const quantity = parseEther("100"); // 100 tokens
+      const pricePerToken = parseUnits("1", 17); // 0.1 ETH per token
+      const totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
+
+      // Move time forward to the end of the auction
+      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
+
+      await expect(
+        auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice })
+      ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
     });
   });
 
