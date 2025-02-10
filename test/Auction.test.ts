@@ -1,7 +1,13 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { ZeroAddress, parseEther, parseUnits, zeroPadBytes } from "ethers";
+import {
+  ContractTransactionResponse,
+  ZeroAddress,
+  parseEther,
+  parseUnits,
+  zeroPadBytes,
+} from "ethers";
 import { ethers } from "hardhat";
 
 import { generateMerkleTree } from "../lib/merkle-tree/generate-merkle-tree";
@@ -14,6 +20,7 @@ describe("Auction Tests", function () {
   let owner: SignerWithAddress;
   let alice: SignerWithAddress;
   let bob: SignerWithAddress;
+  let accounts: SignerWithAddress[];
 
   // contracts
   let auctionContract: Auction;
@@ -24,6 +31,7 @@ describe("Auction Tests", function () {
     owner = signers[0];
     alice = signers[1];
     bob = signers[2];
+    accounts = signers.slice(3);
   });
 
   beforeEach(async function () {
@@ -317,8 +325,10 @@ describe("Auction Tests", function () {
     });
   });
 
-  describe("#claimTokens", function () {
+  describe("#claim", function () {
     const timeBuffer = 5;
+    let quantity = 0n;
+    let totalPrice = 0n;
     let startTime = 0;
     let endTime = 0;
     let root = "";
@@ -338,19 +348,23 @@ describe("Auction Tests", function () {
       await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
 
       // Place a bid
-      const quantity = parseEther("100"); // 100 tokens
+      quantity = parseEther("100"); // 100 tokens
       const pricePerToken = parseUnits("1", 17); // 0.1 ETH per token
-      const totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
+      totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
       await auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice });
       await auctionContract.connect(bob).placeBid(quantity, pricePerToken, { value: totalPrice });
+      await auctionContract
+        .connect(accounts[0])
+        .placeBid(quantity, pricePerToken, { value: totalPrice });
 
       // Move time forward to the end of the auction
       await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
 
       // create a merkle root
       const data = [
-        { bidder: alice.address, quantity: quantity },
-        { bidder: bob.address, quantity: quantity },
+        { bidder: alice.address, quantity },
+        { bidder: bob.address, quantity },
+        { bidder: accounts[0].address, quantity: 0n },
       ];
       const tree = generateMerkleTree(data);
       root = tree.root;
@@ -363,7 +377,7 @@ describe("Auction Tests", function () {
       const bidId = 1;
 
       await expect(
-        auctionContract.connect(alice).claimTokens(bidId, invalidProof)
+        auctionContract.connect(alice).claim(bidId, quantity, invalidProof)
       ).to.be.revertedWithCustomError(auctionContract, "AuctionNotFinalized");
     });
 
@@ -373,7 +387,7 @@ describe("Auction Tests", function () {
       const bidId = 999; // Non-existent bid ID
 
       await expect(
-        auctionContract.connect(alice).claimTokens(bidId, invalidProof)
+        auctionContract.connect(alice).claim(bidId, quantity, invalidProof)
       ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
     });
 
@@ -388,19 +402,47 @@ describe("Auction Tests", function () {
       await tokenContract.mint(auctionContractAddress, tokenAmount);
 
       // Claim tokens for the first time
-      await auctionContract.connect(alice).claimTokens(bidId, proofs[alice.address]);
+      await auctionContract.connect(alice).claim(bidId, quantity, proofs[alice.address]);
 
       // Try to claim tokens again
       await expect(
-        auctionContract.connect(alice).claimTokens(bidId, proofs[alice.address])
+        auctionContract.connect(alice).claim(bidId, quantity, proofs[alice.address])
       ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
     });
 
-    it("should claim tokens successfully", async function () {
+    it("should revert when winner tries to claim eth", async function () {
       await auctionContract.connect(bob).endAuction();
       const bidId = 1;
 
-      const quantity = (await auctionContract.bids(bidId)).quantity;
+      // Alice is the winner and she should give correct quantity but she gave 0 to claim the eth
+      const _quantity = 0n;
+
+      // This would fail with `InvalidProof()` as the given quantity is not correct and won't be verified
+      await expect(
+        auctionContract.connect(alice).claim(bidId, _quantity, proofs[alice.address])
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
+    });
+
+    it("should revert when non-winner tries to claim tokens", async function () {
+      await auctionContract.connect(bob).endAuction();
+
+      const caller = accounts[0];
+      const bidId = 3;
+
+      // caller is not the winner and he should give correct quantity (0) but he gave 100 to claim the tokens
+      const _quantity = parseEther("100");
+
+      // This would fail with `InvalidProof()` as the given quantity is not correct and won't be verified
+      await expect(
+        auctionContract.connect(caller).claim(bidId, _quantity, proofs[caller.address])
+      ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
+    });
+
+    it("allows winner to claim tokens successfully", async function () {
+      await auctionContract.connect(bob).endAuction();
+      const bidId = 1;
+
+      const _quantity = (await auctionContract.bids(bidId)).quantity;
 
       // Mint some tokens to the auction contract
       const auctionContractAddress = await auctionContract.getAddress();
@@ -409,15 +451,51 @@ describe("Auction Tests", function () {
 
       const aliceBalanceBefore = await tokenContract.balanceOf(alice.address);
 
-      await expect(auctionContract.connect(alice).claimTokens(bidId, proofs[alice.address]))
+      await expect(auctionContract.connect(alice).claim(bidId, _quantity, proofs[alice.address]))
         .to.emit(auctionContract, "TokensClaimed")
-        .withArgs(alice.address, quantity);
+        .withArgs(alice.address, _quantity);
 
       const bid = await auctionContract.bids(bidId);
       expect(bid.quantity).to.equal(0);
 
       const aliceBalanceAfter = await tokenContract.balanceOf(alice.address);
-      expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + quantity);
+      expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + _quantity);
+    });
+
+    it("allows non-winner to claim eth successfully", async function () {
+      await auctionContract.connect(bob).endAuction();
+      const bidId = 3;
+      const _quantity = 0; // non-winner
+
+      // Mint some tokens to the auction contract
+      const auctionContractAddress = await auctionContract.getAddress();
+      const tokenAmount = parseEther("100");
+      await tokenContract.mint(auctionContractAddress, tokenAmount);
+
+      const caller = accounts[0];
+      const beforeBal = await ethers.provider.getBalance(caller.address);
+
+      const gasFeeDelta = await getGasFee(
+        auctionContract.connect(caller).claim(bidId, _quantity, proofs[caller.address])
+      );
+      const bid = await auctionContract.bids(bidId);
+      expect(bid.bidder).to.equal(ZeroAddress);
+      expect(bid.quantity).to.equal(0);
+
+      const afterBal = await ethers.provider.getBalance(caller.address);
+
+      // 0.000049256451344628 eth fee delta
+      expect(afterBal).to.approximately(beforeBal + totalPrice, gasFeeDelta);
     });
   });
 });
+
+const getGasFee = async (tx: Promise<ContractTransactionResponse>) => {
+  const txResponse = await tx;
+  const receipt = await txResponse.wait();
+  if (!receipt) return Error("No receipt found for transaction");
+  const gasUsed = receipt.gasUsed;
+  const gasPrice = receipt.gasPrice;
+
+  return gasUsed * gasPrice;
+};
