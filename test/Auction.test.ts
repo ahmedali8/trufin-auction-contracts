@@ -24,6 +24,8 @@ const INVALID_PROOF = ["0xa7a72291e3c368d9052a4baa918856f83eca42f8862b56ad9b17bf
 const TEST_MERKLE_ROOT = zeroPadBytes("0x01", 32);
 const TEST_IPFS_HASH = "QmTestHash";
 const TOTAL_TOKENS = parseEther("10");
+const TOKEN_QUANTITY = parseEther("100");
+const PRICE_PER_TOKEN = parseUnits("1", 17); // 0.1 ETH per token
 
 describe("Auction Tests", function () {
   // signers
@@ -183,106 +185,103 @@ describe("Auction Tests", function () {
   });
 
   describe("#placeBid", function () {
-    const timeBuffer = 5;
-    let endTime = 0;
+    let startTime = 0,
+      endTime = 0;
 
     beforeEach(async function () {
-      const tokenAddress = await tokenContract.getAddress();
-      const totalTokens = parseEther("10");
-      const startTime = (await time.latest()) + timeBuffer;
+      startTime = await getStartTime();
       endTime = startTime + time.duration.minutes(10);
-      await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+      await tokenContract.approve(auctionContract.getAddress(), TOTAL_TOKENS);
+      await auctionContract.startAuction(tokenAddress, TOTAL_TOKENS, startTime, endTime, {
         value: SECURITY_DEPOSIT,
       });
 
-      // Move time forward to the start of the auction
-      await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
+      await advanceToAuctionStart(startTime);
     });
 
-    it("should revert if the owner tries to place a bid", async function () {
-      await expect(
-        auctionContract.connect(owner).placeBid(1, 0, { value: 0 })
-      ).to.be.revertedWithCustomError(auctionContract, "OwnerCannotPlaceABid");
+    context("when the bid or params are invalid", function () {
+      it("should revert if the owner tries to place a bid", async function () {
+        await expect(
+          auctionContract.connect(owner).placeBid(1, 0, { value: 0 })
+        ).to.be.revertedWithCustomError(auctionContract, "OwnerCannotPlaceABid");
+      });
+
+      it("should revert if the bid quantity is zero", async function () {
+        await expect(
+          auctionContract.connect(alice).placeBid(0, parseEther("1"), { value: 0 })
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidQuantity");
+      });
+
+      it("should revert if the bid price per token is zero", async function () {
+        await expect(
+          auctionContract.connect(alice).placeBid(1, 0, { value: 0 })
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
+        await expect(
+          auctionContract.connect(alice).placeBid(1, 0, { value: parseEther("1") })
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
+      });
     });
 
-    it("should revert if the bid quantity is zero", async function () {
-      await expect(
-        auctionContract.connect(alice).placeBid(0, parseEther("1"), { value: 0 })
-      ).to.be.revertedWithCustomError(auctionContract, "InvalidBidQuantity");
-    });
+    context("when the bid is valid", function () {
+      const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
 
-    it("should revert if the bid price per token is zero", async function () {
-      await expect(
-        auctionContract.connect(alice).placeBid(1, 0, { value: 0 })
-      ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
-      await expect(
-        auctionContract.connect(alice).placeBid(1, 0, { value: parseEther("1") })
-      ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
-    });
+      it("should place a bid successfully", async function () {
+        const contractBalBefore = await ethers.provider.getBalance(auctionAddress);
 
-    it("should place a bid successfully", async function () {
-      const quantity = parseEther("100"); // 100 tokens
-      const pricePerToken = parseUnits("1", 17); // 0.1 ETH per token
-      const totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
-      const auctionContractAddress = await auctionContract.getAddress();
-
-      const contractBalBefore = await ethers.provider.getBalance(auctionContractAddress);
-
-      const expectedBidId = 1n;
-      const actualBidId = await auctionContract.nextBidId();
-      expect(actualBidId).to.equal(expectedBidId);
-      await expect(
-        auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice })
-      )
-        .to.emit(auctionContract, "BidPlaced")
-        .withArgs(actualBidId, alice.address, quantity, pricePerToken);
-
-      const bid = await auctionContract.bids(actualBidId);
-
-      expect(bid.bidder).to.equal(alice.address);
-      expect(bid.quantity).to.equal(quantity);
-      expect(bid.pricePerToken).to.equal(pricePerToken);
-
-      const actualNewBidId = await auctionContract.nextBidId();
-      const expectedNewBidId = expectedBidId + 1n;
-      expect(actualNewBidId).to.equal(expectedNewBidId);
-
-      // assert the balance of the contract
-      const contractBalAfter = await ethers.provider.getBalance(auctionContractAddress);
-      expect(contractBalAfter).to.equal(totalPrice + contractBalBefore);
-    });
-
-    it("should revert if placing bid after auction ends", async function () {
-      const quantity = parseEther("100"); // 100 tokens
-      const pricePerToken = parseUnits("1", 17); // 0.1 ETH per token
-      const totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
-
-      // Move time forward to the end of the auction
-      await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
-
-      await expect(
-        auctionContract.connect(alice).placeBid(quantity, pricePerToken, { value: totalPrice })
-      ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
-    });
-
-    it("should measure gas cost for placing multiple bids", async function () {
-      const bids = [];
-      for (let i = 0; i < 100; i++) {
-        bids.push(
+        const expectedBidId = 1n;
+        const actualBidId = await auctionContract.nextBidId();
+        expect(actualBidId).to.equal(expectedBidId);
+        await expect(
           auctionContract
-            .connect(accounts[i % accounts.length])
-            .placeBid(parseEther("1"), parseEther("0.1"), {
-              value: parseEther("0.1"),
-            })
-        );
-      }
-      const tx = await Promise.all(bids);
-      const gasUsed = await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
-      // console.log(
-      //   "Gas Used for 100 bids:",
-      //   gasUsed.reduce((a, b) => a + b, 0n) / BigInt(gasUsed.length)
-      // );
+            .connect(alice)
+            .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
+        )
+          .to.emit(auctionContract, "BidPlaced")
+          .withArgs(actualBidId, alice.address, TOKEN_QUANTITY, PRICE_PER_TOKEN);
+
+        const bid = await auctionContract.bids(actualBidId);
+
+        expect(bid.bidder).to.equal(alice.address);
+        expect(bid.quantity).to.equal(TOKEN_QUANTITY);
+        expect(bid.pricePerToken).to.equal(PRICE_PER_TOKEN);
+
+        const actualNewBidId = await auctionContract.nextBidId();
+        const expectedNewBidId = expectedBidId + 1n;
+        expect(actualNewBidId).to.equal(expectedNewBidId);
+
+        // assert the balance of the contract
+        const contractBalAfter = await ethers.provider.getBalance(auctionAddress);
+        expect(contractBalAfter).to.equal(totalPrice + contractBalBefore);
+      });
+
+      it("should revert if placing bid after auction ends", async function () {
+        await advanceToAuctionEnd(endTime);
+
+        await expect(
+          auctionContract
+            .connect(alice)
+            .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
+        ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
+      });
+
+      it("should measure gas cost for placing multiple bids", async function () {
+        const bids = [];
+        for (let i = 0; i < 100; i++) {
+          bids.push(
+            auctionContract
+              .connect(accounts[i % accounts.length])
+              .placeBid(parseEther("1"), parseEther("0.1"), {
+                value: parseEther("0.1"),
+              })
+          );
+        }
+        const tx = await Promise.all(bids);
+        const gasUsed = await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
+        // console.log(
+        //   "Gas Used for 100 bids:",
+        //   gasUsed.reduce((a, b) => a + b, 0n) / BigInt(gasUsed.length)
+        // );
+      });
     });
   });
 
@@ -713,12 +712,18 @@ async function getStartTime() {
   return (await time.latest()) + TIME_BUFFER;
 }
 
-// Moves time forward by the auction duration and buffer.
-async function advanceToAuctionEnd() {
-  await time.increase(AUCTION_DURATION + TIME_BUFFER);
+// gets the price
+function getBidPrice(quantity: bigint, pricePerToken: bigint) {
+  return (pricePerToken * quantity) / parseUnits("1", 18);
 }
 
-// gets the price
-async function getBidPrice(quantity: bigint, pricePerToken: bigint) {
-  return (pricePerToken * quantity) / parseUnits("1", 18);
+// Move time forward to the start of the auction
+async function advanceToAuctionStart(startTime: number) {
+  await time.increaseTo(startTime + time.duration.seconds(TIME_BUFFER));
+}
+
+// Move time forward to the start of the auction
+// Move time forward to the end of the auction
+async function advanceToAuctionEnd(endTime: number) {
+  await time.increaseTo(endTime + time.duration.seconds(TIME_BUFFER));
 }
