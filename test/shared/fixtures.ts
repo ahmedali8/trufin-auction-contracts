@@ -6,11 +6,12 @@ import type { Auction, Auction__factory, MockToken, MockToken__factory } from ".
 export async function auctionFixture(): Promise<Auction> {
   const signers = await ethers.getSigners();
   const owner: SignerWithAddress = signers[0];
+  const verifier: SignerWithAddress = signers[1];
 
   const AuctionFactory: Auction__factory = await ethers.getContractFactory("Auction");
 
   type DeployArgs = Parameters<typeof AuctionFactory.deploy>;
-  const args: DeployArgs = [owner.address];
+  const args: DeployArgs = [owner.address, verifier.address];
 
   const auction: Auction = await AuctionFactory.connect(owner).deploy(...args);
   await auction.waitForDeployment();

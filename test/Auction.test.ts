@@ -15,11 +15,14 @@ import type { Auction, MockToken } from "../types";
 import { ZERO_BYTES32 } from "../utils/constants";
 import { loadFixtures } from "./shared/fixtures";
 
+const DISPUTE_DEPOSIT = parseUnits("1", 17); // 0.1 ETH
+
 describe("Auction Tests", function () {
   // signers
   let owner: SignerWithAddress;
   let alice: SignerWithAddress;
   let bob: SignerWithAddress;
+  let verifier: SignerWithAddress;
   let accounts: SignerWithAddress[];
 
   // contracts
@@ -27,11 +30,12 @@ describe("Auction Tests", function () {
   let tokenContract: MockToken;
 
   before(async function () {
-    const signers: SignerWithAddress[] = await ethers.getSigners();
-    owner = signers[0];
-    alice = signers[1];
-    bob = signers[2];
-    accounts = signers.slice(3);
+    [owner, verifier, alice, bob, ...accounts] = await ethers.getSigners();
+    // owner = signers[0];
+    // verifier = signers[1];
+    // alice = signers[2];
+    // bob = signers[3];
+    // accounts = signers.slice(4);
   });
 
   beforeEach(async function () {
@@ -59,13 +63,27 @@ describe("Auction Tests", function () {
       await expect(
         auctionContract
           .connect(alice)
-          .startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738)
+          .startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738, {
+            value: DISPUTE_DEPOSIT,
+          })
+      ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
+    });
+
+    it("it should revert if deposit not paid", async function () {
+      await expect(
+        auctionContract
+          .connect(alice)
+          .startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738, {
+            value: 0n,
+          })
       ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
     });
 
     it("it should revert if the token address is the zero address", async function () {
       await expect(
-        auctionContract.startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738)
+        auctionContract.startAuction(ZeroAddress, parseEther("1"), 1739058738, 1739058738, {
+          value: DISPUTE_DEPOSIT,
+        })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidTokenAddress");
     });
 
@@ -73,7 +91,9 @@ describe("Auction Tests", function () {
       const tokenAddress = await tokenContract.getAddress();
 
       await expect(
-        auctionContract.startAuction(tokenAddress, 0, 1739058738, 1739058738)
+        auctionContract.startAuction(tokenAddress, 0, 1739058738, 1739058738, {
+          value: DISPUTE_DEPOSIT,
+        })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidTotalTokens");
     });
 
@@ -81,7 +101,9 @@ describe("Auction Tests", function () {
       const tokenAddress = await tokenContract.getAddress();
 
       await expect(
-        auctionContract.startAuction(tokenAddress, parseEther("1"), 0, 1739058738)
+        auctionContract.startAuction(tokenAddress, parseEther("1"), 0, 1739058738, {
+          value: DISPUTE_DEPOSIT,
+        })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionTime");
     });
 
@@ -89,7 +111,9 @@ describe("Auction Tests", function () {
       const tokenAddress = await tokenContract.getAddress();
 
       await expect(
-        auctionContract.startAuction(tokenAddress, parseEther("1"), 1739058738, 1739058737)
+        auctionContract.startAuction(tokenAddress, parseEther("1"), 1739058738, 1739058737, {
+          value: DISPUTE_DEPOSIT,
+        })
       ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionTime");
     });
 
@@ -102,7 +126,9 @@ describe("Auction Tests", function () {
       const endTime = startTime + time.duration.minutes(10);
 
       await expect(
-        auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime)
+        auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+          value: DISPUTE_DEPOSIT,
+        })
       ).to.be.revertedWithCustomError(tokenContract, "ERC20InsufficientAllowance");
     });
 
@@ -117,7 +143,11 @@ describe("Auction Tests", function () {
       // Approve the auction contract to spend the tokens
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
 
-      await expect(auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime))
+      await expect(
+        auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+          value: DISPUTE_DEPOSIT,
+        })
+      )
         .to.emit(auctionContract, "AuctionStarted")
         .withArgs(tokenAddress, totalTokens, startTime, endTime);
 
@@ -143,7 +173,9 @@ describe("Auction Tests", function () {
       const startTime = (await time.latest()) + timeBuffer;
       const endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+        value: DISPUTE_DEPOSIT,
+      });
 
       // Move time forward to the start of the auction
       await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
@@ -174,6 +206,9 @@ describe("Auction Tests", function () {
       const quantity = parseEther("100"); // 100 tokens
       const pricePerToken = parseUnits("1", 17); // 0.1 ETH per token
       const totalPrice = (pricePerToken * quantity) / parseUnits("1", 18); // 10 tokens
+      const auctionContractAddress = await auctionContract.getAddress();
+
+      const contractBalBefore = await ethers.provider.getBalance(auctionContractAddress);
 
       const expectedBidId = 1n;
       const actualBidId = await auctionContract.nextBidId();
@@ -195,9 +230,8 @@ describe("Auction Tests", function () {
       expect(actualNewBidId).to.equal(expectedNewBidId);
 
       // assert the balance of the contract
-      const auctionContractAddress = await auctionContract.getAddress();
-      const contractBalance = await ethers.provider.getBalance(auctionContractAddress);
-      expect(contractBalance).to.equal(totalPrice);
+      const contractBalAfter = await ethers.provider.getBalance(auctionContractAddress);
+      expect(contractBalAfter).to.equal(totalPrice + contractBalBefore);
     });
   });
 
@@ -212,7 +246,9 @@ describe("Auction Tests", function () {
       startTime = (await time.latest()) + timeBuffer;
       endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+        value: DISPUTE_DEPOSIT,
+      });
     });
 
     it("should revert if not called by the owner", async function () {
@@ -297,7 +333,9 @@ describe("Auction Tests", function () {
       startTime = (await time.latest()) + timeBuffer;
       endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+        value: DISPUTE_DEPOSIT,
+      });
 
       // Move time forward to the end of the auction
       await time.increaseTo(endTime + time.duration.seconds(timeBuffer));
@@ -342,7 +380,9 @@ describe("Auction Tests", function () {
       startTime = (await time.latest()) + timeBuffer;
       endTime = startTime + time.duration.minutes(10);
       await tokenContract.approve(auctionContract.getAddress(), totalTokens);
-      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime);
+      await auctionContract.startAuction(tokenAddress, totalTokens, startTime, endTime, {
+        value: DISPUTE_DEPOSIT,
+      });
 
       // Move time forward to the start of the auction
       await time.increaseTo(startTime + time.duration.seconds(timeBuffer));
