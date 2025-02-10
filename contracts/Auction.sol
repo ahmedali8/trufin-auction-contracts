@@ -239,11 +239,15 @@ contract Auction is Ownable {
     event AuctioneerPenalized(uint256 penaltyAmount);
 
     function slash(bytes32 newRoot, string calldata newIpfsHash) external onlyVerifier {
-        if (newRoot == bytes32(0)) {
+        if (newRoot == bytes32(0) || newRoot == auction.merkleRoot) {
             revert InvalidMerkleRoot();
         }
 
-        if (bytes(newIpfsHash).length == 0) {
+        if (
+            bytes(newIpfsHash).length == 0
+                || keccak256(abi.encodePacked(newIpfsHash))
+                    == keccak256(abi.encodePacked(auction.ipfsHash))
+        ) {
             revert InvalidIPFSHash();
         }
 
