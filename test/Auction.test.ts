@@ -1,33 +1,33 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import {
-  ContractTransactionResponse,
-  ZeroAddress,
-  parseEther,
-  parseUnits,
-  zeroPadBytes,
-} from "ethers";
+import { ZeroAddress, parseEther, zeroPadBytes } from "ethers";
 import { ethers } from "hardhat";
 
 import { generateMerkleTree } from "../lib/merkle-tree/generate-merkle-tree";
 import type { Auction, MockToken } from "../types";
-import { ZERO_BYTES32 } from "../utils/constants";
+import {
+  DUMMY_IPFS_HASH,
+  DUMMY_MERKLE_ROOT,
+  INVALID_IPFS_HASH,
+  INVALID_MERKLE_ROOT,
+  INVALID_PROOF,
+  PRICE_PER_TOKEN,
+  SECURITY_DEPOSIT,
+  TIME_BUFFER,
+  TOKEN_AMOUNT,
+  TOKEN_QUANTITY,
+  TOTAL_TOKENS,
+  VERIFICATION_WINDOW,
+} from "./shared/constants";
 import { loadFixtures } from "./shared/fixtures";
-
-const SECURITY_DEPOSIT = parseUnits("5", 17); // 0.5 ETH
-const VERIFICATION_WINDOW = time.duration.hours(2);
-const TIME_BUFFER = 5; // Buffer for timing adjustments
-const AUCTION_DURATION = time.duration.minutes(10); // Auction lasts 10 minutes (just for example)
-const TOKEN_AMOUNT = parseEther("100");
-const TOTAL_TOKENS = parseEther("10");
-const TOKEN_QUANTITY = parseEther("100");
-const PRICE_PER_TOKEN = parseUnits("1", 17); // 0.1 ETH per token
-const INVALID_MERKLE_ROOT = ZERO_BYTES32;
-const INVALID_IPFS_HASH = "";
-const DUMMY_MERKLE_ROOT = zeroPadBytes("0x01", 32);
-const DUMMY_IPFS_HASH = "Test IPFS Hash";
-const INVALID_PROOF = ["0xa7a72291e3c368d9052a4baa918856f83eca42f8862b56ad9b17bf3cb8038885"];
+import {
+  advanceToAuctionEnd,
+  advanceToAuctionStart,
+  getBidPrice,
+  getGasFee,
+  getStartAndEndTime,
+} from "./shared/helpers";
 
 describe("Auction Tests", function () {
   // signers
@@ -190,7 +190,7 @@ describe("Auction Tests", function () {
           expect(auctionState.totalTokens).to.equal(TOTAL_TOKENS);
           expect(auctionState.startTime).to.equal(startTime);
           expect(auctionState.endTime).to.equal(endTime);
-          expect(auctionState.merkleRoot).to.equal(ZERO_BYTES32);
+          expect(auctionState.merkleRoot).to.equal(INVALID_MERKLE_ROOT);
           expect(auctionState.ipfsHash).to.equal("");
           expect(auctionState.isFinalized).to.equal(false);
         });
@@ -627,44 +627,3 @@ describe("Auction Tests", function () {
     });
   });
 });
-
-const getGasFee = async (tx: Promise<ContractTransactionResponse>) => {
-  const txResponse = await tx;
-  const receipt = await txResponse.wait();
-  if (!receipt) return Error("No receipt found for transaction");
-  const gasUsed = receipt.gasUsed;
-  const gasPrice = receipt.gasPrice;
-
-  return gasUsed * gasPrice;
-};
-
-async function getStartTime() {
-  return (await time.latest()) + TIME_BUFFER;
-}
-
-function getEndTime(startTime: number) {
-  return startTime + AUCTION_DURATION;
-}
-
-async function getStartAndEndTime() {
-  const startTime = await getStartTime();
-  const endTime = getEndTime(startTime);
-
-  return { startTime, endTime };
-}
-
-// gets the price
-function getBidPrice(quantity: bigint, pricePerToken: bigint) {
-  return (pricePerToken * quantity) / parseUnits("1", 18);
-}
-
-// Move time forward to the start of the auction
-async function advanceToAuctionStart(startTime: number) {
-  await time.increaseTo(startTime + time.duration.seconds(TIME_BUFFER));
-}
-
-// Move time forward to the start of the auction
-// Move time forward to the end of the auction
-async function advanceToAuctionEnd(endTime: number) {
-  await time.increaseTo(endTime + time.duration.seconds(TIME_BUFFER));
-}
