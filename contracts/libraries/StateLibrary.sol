@@ -9,7 +9,7 @@ import { MerkleRootLibrary } from "./MerkleRootLibrary.sol";
 import { IAuction } from "../interfaces/IAuction.sol";
 import { Constants } from "./Constants.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-
+import { MultiHashLibrary } from "./MultiHashLibrary.sol";
 import { console } from "hardhat/console.sol";
 
 library StateLibrary {
@@ -60,7 +60,7 @@ library StateLibrary {
 
     function submitMerkleData(
         State storage self,
-        IAuction.SubmitMerkleDataParams memory params
+        IAuction.MerkleDataParams memory params
     )
         internal
     {
@@ -127,5 +127,40 @@ library StateLibrary {
 
         // Remove the bid from storage after successful validation
         delete bids[params.bidId];
+    }
+
+    function slash(State storage self, IAuction.MerkleDataParams memory params) internal {
+        // Validate auction status
+        if (self.status != Status.MERKLE_SUBMITTED) {
+            revert Errors.InvalidAuctionStatus();
+        }
+
+        // Ensure new Merkle root is different and valid
+        if (!params.merkleRoot.isMerkleRootValid() || params.merkleRoot == self.merkleRoot) {
+            revert Errors.InvalidMerkleRoot();
+        }
+
+        // Ensure the new IPFS hash (digest) is different and valid
+        if (
+            !MultiHashLibrary.isMultiHashValid(params.digest, params.hashFunction, params.size)
+                || (
+                    self.digest == params.digest && self.hashFunction == params.hashFunction
+                        && self.size == params.size
+                )
+        ) {
+            revert Errors.InvalidMultiHash();
+        }
+
+        // Ensure slashing happens within the verification window
+        if (block.timestamp > self.verificationDeadline) {
+            revert Errors.VerificationWindowExpired();
+        }
+
+        // Apply new values
+        self.merkleRoot = params.merkleRoot;
+        self.digest = params.digest;
+        self.hashFunction = params.hashFunction;
+        self.size = params.size;
+        self.isOwnerSlashed = true;
     }
 }

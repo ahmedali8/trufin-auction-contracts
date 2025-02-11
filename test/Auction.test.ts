@@ -380,28 +380,28 @@ describe("Auction Tests", function () {
 
     context("when called by non-owner", function () {
       it("should revert", async function () {
-        const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+        const merkleDataParams: IAuction.MerkleDataParamsStruct = {
           merkleRoot: INVALID_MERKLE_ROOT,
           digest: MOCK_MULTI_HASH_IPFS.digest,
           hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
           size: MOCK_MULTI_HASH_IPFS.size,
         };
         await expect(
-          auctionContract.connect(alice).submitMerkleData(submitMerkleDataParams)
+          auctionContract.connect(alice).submitMerkleData(merkleDataParams)
         ).to.be.revertedWithCustomError(auctionContract, "OwnableUnauthorizedAccount");
       });
     });
 
     context("when auction is not finalized", function () {
       it("should revert if its called before the auction has started", async function () {
-        const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+        const merkleDataParams: IAuction.MerkleDataParamsStruct = {
           merkleRoot: INVALID_MERKLE_ROOT,
           digest: MOCK_MULTI_HASH_IPFS.digest,
           hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
           size: MOCK_MULTI_HASH_IPFS.size,
         };
         await expect(
-          auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams)
+          auctionContract.connect(owner).submitMerkleData(merkleDataParams)
         ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
       });
 
@@ -409,14 +409,14 @@ describe("Auction Tests", function () {
         // Move time forward to the start of the auction
         await advanceToAuctionStart(startTime);
 
-        const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+        const merkleDataParams: IAuction.MerkleDataParamsStruct = {
           merkleRoot: INVALID_MERKLE_ROOT,
           digest: MOCK_MULTI_HASH_IPFS.digest,
           hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
           size: MOCK_MULTI_HASH_IPFS.size,
         };
         await expect(
-          auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams)
+          auctionContract.connect(owner).submitMerkleData(merkleDataParams)
         ).to.be.revertedWithCustomError(auctionContract, "AuctionStillActive");
       });
     });
@@ -428,32 +428,32 @@ describe("Auction Tests", function () {
 
       context("when submitting invalid data", function () {
         it("should revert if merkle root is invalid", async function () {
-          const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+          const merkleDataParams: IAuction.MerkleDataParamsStruct = {
             merkleRoot: INVALID_MERKLE_ROOT,
             digest: INVALID_MULTI_HASH_IPFS.digest,
             hashFunction: INVALID_MULTI_HASH_IPFS.hashFunction,
             size: INVALID_MULTI_HASH_IPFS.size,
           };
           await expect(
-            auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams)
+            auctionContract.connect(owner).submitMerkleData(merkleDataParams)
           ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
         });
 
         it("should revert if ipfs hash is invalid", async function () {
-          const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+          const merkleDataParams: IAuction.MerkleDataParamsStruct = {
             merkleRoot: DUMMY_MERKLE_ROOT,
             digest: INVALID_MULTI_HASH_IPFS.digest,
             hashFunction: INVALID_MULTI_HASH_IPFS.hashFunction,
             size: INVALID_MULTI_HASH_IPFS.size,
           };
           await expect(
-            auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams)
+            auctionContract.connect(owner).submitMerkleData(merkleDataParams)
           ).to.be.revertedWithCustomError(auctionContract, "InvalidMultiHash");
         });
       });
 
       context("when submitting invalid data", function () {
-        const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+        const merkleDataParams: IAuction.MerkleDataParamsStruct = {
           merkleRoot: DUMMY_MERKLE_ROOT,
           digest: MOCK_MULTI_HASH_IPFS.digest,
           hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
@@ -461,7 +461,7 @@ describe("Auction Tests", function () {
         };
 
         beforeEach(async function () {
-          await expect(auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams))
+          await expect(auctionContract.connect(owner).submitMerkleData(merkleDataParams))
             .to.emit(auctionContract, "MerkleRootSubmitted")
             .withArgs(
               DUMMY_MERKLE_ROOT,
@@ -473,7 +473,7 @@ describe("Auction Tests", function () {
 
         it("should revert if merkle root is submitted twice", async function () {
           await expect(
-            auctionContract.submitMerkleData(submitMerkleDataParams)
+            auctionContract.submitMerkleData(merkleDataParams)
           ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
         });
 
@@ -567,13 +567,13 @@ describe("Auction Tests", function () {
       }));
 
       ({ root, proofs } = generateMerkleTree(data));
-      const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+      const merkleDataParams: IAuction.MerkleDataParamsStruct = {
         merkleRoot: root,
         digest: MOCK_MULTI_HASH_IPFS.digest,
         hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
         size: MOCK_MULTI_HASH_IPFS.size,
       };
-      await auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams);
+      await auctionContract.connect(owner).submitMerkleData(merkleDataParams);
     });
 
     it("should revert if the auction is not finalized", async function () {
@@ -719,11 +719,24 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
-
   describe("#slash", function () {
-    let startTime = 0,
-      endTime = 0;
+    let startTime = 0;
+    let endTime = 0;
+
+    const oldMerkleDataParams: IAuction.MerkleDataParamsStruct = {
+      merkleRoot: DUMMY_MERKLE_ROOT,
+      digest: MOCK_MULTI_HASH_IPFS.digest,
+      hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
+      size: MOCK_MULTI_HASH_IPFS.size,
+    };
+
+    const newMerkleDataParams: IAuction.MerkleDataParamsStruct = {
+      merkleRoot: zeroPadBytes("0x02", 32),
+      // cid: QmdmQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7RgQm
+      digest: "0xE536C7F88D731F374DCCB568AFF6F56E838A19382E488039B1CA8AD2599E82FE",
+      hashFunction: 18, // 0x12
+      size: 50, // 0x32
+    };
 
     beforeEach(async function () {
       ({ startTime, endTime } = await approveAndStartAuction());
@@ -731,43 +744,58 @@ describe("Auction Tests", function () {
 
     context("when called by non-verifier", function () {
       it("should revert", async function () {
+        const slashParams: IAuction.MerkleDataParamsStruct = {
+          merkleRoot: INVALID_MERKLE_ROOT,
+          digest: INVALID_MULTI_HASH_IPFS.digest,
+          hashFunction: INVALID_MULTI_HASH_IPFS.hashFunction,
+          size: INVALID_MULTI_HASH_IPFS.size,
+        };
+
         await expect(
-          auctionContract.connect(alice).slash(INVALID_MERKLE_ROOT, INVALID_IPFS_HASH)
+          auctionContract.connect(alice).slash(slashParams)
         ).to.be.revertedWithCustomError(auctionContract, "OnlyVerifierCanResolveDispute");
       });
     });
 
-    context("when submitting invalid data", function () {
+    context("when merkle is not submitted", function () {
       it("should revert if the merkle root is invalid", async function () {
         await expect(
-          auctionContract.connect(verifier).slash(INVALID_MERKLE_ROOT, DUMMY_IPFS_HASH)
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
-      });
-
-      it("should revert if the ipfs hash is invalid", async function () {
-        await expect(
-          auctionContract.connect(verifier).slash(DUMMY_MERKLE_ROOT, INVALID_IPFS_HASH)
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidIPFSHash");
-      });
-
-      it("should revert if the merkle root is not set yet", async function () {
-        await expect(
-          auctionContract.connect(verifier).slash(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH)
-        ).to.be.revertedWithCustomError(auctionContract, "AuctionMustHaveAnInitialMerkleRoot");
+          auctionContract.connect(verifier).slash(oldMerkleDataParams)
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionStatus");
       });
     });
 
-    context("when an incorrect merkle root is submitted", function () {
-      const oldMerkleRoot = zeroPadBytes("0x01", 32);
-      const oldIpfsHash = "Old TestHash";
-
-      const newMerkleRoot = zeroPadBytes("0x02", 32);
-      const newIpfsHash = "New TestHash";
-
+    context("when merkle is submitted", function () {
       beforeEach(async function () {
         await advanceToAuctionEnd(endTime);
 
-        await auctionContract.connect(owner).submitMerkleData(oldMerkleRoot, oldIpfsHash);
+        await auctionContract.connect(owner).submitMerkleData(oldMerkleDataParams);
+      });
+
+      it("should revert if the merkle root is invalid", async function () {
+        const slashParams: IAuction.MerkleDataParamsStruct = {
+          merkleRoot: INVALID_MERKLE_ROOT,
+          digest: MOCK_MULTI_HASH_IPFS.digest,
+          hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
+          size: MOCK_MULTI_HASH_IPFS.size,
+        };
+
+        await expect(
+          auctionContract.connect(verifier).slash(slashParams)
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
+      });
+
+      it("should revert if the ipfs hash data is invalid", async function () {
+        const slashParams: IAuction.MerkleDataParamsStruct = {
+          merkleRoot: newMerkleDataParams.merkleRoot,
+          digest: INVALID_MULTI_HASH_IPFS.digest,
+          hashFunction: INVALID_MULTI_HASH_IPFS.hashFunction,
+          size: INVALID_MULTI_HASH_IPFS.size,
+        };
+
+        await expect(
+          auctionContract.connect(verifier).slash(slashParams)
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidMultiHash");
       });
 
       it("should revert if the merkle is set but verification time hash expired", async function () {
@@ -775,20 +803,18 @@ describe("Auction Tests", function () {
         await time.increase(VERIFICATION_WINDOW + TIME_BUFFER);
 
         await expect(
-          auctionContract.connect(verifier).slash(newMerkleRoot, newIpfsHash)
+          auctionContract.connect(verifier).slash(newMerkleDataParams)
         ).to.be.revertedWithCustomError(auctionContract, "VerificationWindowExpired");
       });
 
       it("should slash the owner and emit events", async function () {
         const balBefore = await ethers.provider.getBalance(verifier.address);
         const gasFee = await getGasFee(
-          auctionContract.connect(verifier).slash(newMerkleRoot, newIpfsHash)
+          auctionContract.connect(verifier).slash(newMerkleDataParams)
         );
         const balAfter = await ethers.provider.getBalance(verifier.address);
         expect(balAfter).to.approximately(balBefore + SECURITY_DEPOSIT, gasFee);
       });
     });
   });
-
-  */
 });

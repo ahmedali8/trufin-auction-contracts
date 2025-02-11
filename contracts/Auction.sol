@@ -60,7 +60,7 @@ contract Auction is Ownable {
     event AuctionFinalized(address caller);
     event TokensClaimed(address bidder, uint256 quantity);
     event ETHClaimed(address bidder, uint256 amount);
-    event MerkleRootUpdated(bytes32 oldRoot, bytes32 newRoot);
+    event MerkleRootUpdated(bytes32 merkleRoot, bytes32 digest, uint8 hashFunction, uint8 size);
     event AuctioneerPenalized(uint256 penaltyAmount);
     event VerifierSet(address verifier);
 
@@ -141,7 +141,7 @@ contract Auction is Ownable {
         price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
     }
 
-    function submitMerkleData(IAuction.SubmitMerkleDataParams calldata params)
+    function submitMerkleData(IAuction.MerkleDataParams calldata params)
         external
         onlyOwner
         onlyAfterAuction
@@ -183,41 +183,13 @@ contract Auction is Ownable {
         }
     }
 
-    /*
-
-    function slash(bytes32 newRoot, string calldata newIpfsHash) external onlyVerifier {
-        if (newRoot == bytes32(0) || newRoot == auction.merkleRoot) {
-            revert InvalidMerkleRoot();
-        }
-
-        if (
-            bytes(newIpfsHash).length == 0
-                || keccak256(abi.encodePacked(newIpfsHash))
-                    == keccak256(abi.encodePacked(auction.ipfsHash))
-        ) {
-            revert InvalidIPFSHash();
-        }
-
-        if (auction.merkleRoot == bytes32(0)) revert AuctionMustHaveAnInitialMerkleRoot();
-
-        // Enforce 2-hour limit
-        if (block.timestamp > verificationDeadline) revert VerificationWindowExpired();
-
-        bytes32 _oldRoot = auction.merkleRoot;
-
-        auction.merkleRoot = newRoot;
-        auction.ipfsHash = newIpfsHash;
-
-        isAuctioneerSlashed = true;
+    function slash(IAuction.MerkleDataParams calldata params) external onlyVerifier {
+        state.slash(params);
 
         // Reward verifier for catching fraud
-        (bool success,) = _msgSender().call{ value: SECURITY_DEPOSIT }("");
-        if (!success) {
-            revert EthTransferFailed();
-        }
+        verifier.sendValue(SECURITY_DEPOSIT);
 
-        emit MerkleRootUpdated(_oldRoot, newRoot);
+        emit MerkleRootUpdated(params.merkleRoot, params.digest, params.hashFunction, params.size);
         emit AuctioneerPenalized(SECURITY_DEPOSIT);
     }
-     */
 }

@@ -32,7 +32,7 @@ export const MOCK_MULTI_HASH_IPFS: MockIpfs = {
 };
 
 /// Mock Params ///
-export const MOCK_SUBMIT_MERKLE_DATA_PARAMS: IAuction.SubmitMerkleDataParamsStruct = {
+export const MOCK_SUBMIT_MERKLE_DATA_PARAMS: IAuction.MerkleDataParamsStruct = {
   merkleRoot: DUMMY_MERKLE_ROOT,
   digest: MOCK_MULTI_HASH_IPFS.digest,
   hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,

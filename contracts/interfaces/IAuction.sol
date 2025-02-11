@@ -2,19 +2,19 @@
 pragma solidity ^0.8.23;
 
 interface IAuction {
-    struct StartAuctionParams {
-        uint128 totalTokens;
-        uint40 startTime;
-        uint40 endTime;
-        address token;
-    }
-
-    struct SubmitMerkleDataParams {
+    struct MerkleDataParams {
         bytes32 merkleRoot;
         // MultiHash
         bytes32 digest;
         uint8 hashFunction;
         uint8 size;
+    }
+
+    struct StartAuctionParams {
+        uint128 totalTokens;
+        uint40 startTime;
+        uint40 endTime;
+        address token;
     }
 
     struct ClaimParams {
