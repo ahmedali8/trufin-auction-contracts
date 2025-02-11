@@ -272,10 +272,9 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
   describe("#placeBid", function () {
-    let startTime = 0,
-      endTime = 0;
+    let startTime = 0;
+    let endTime = 0;
 
     beforeEach(async function () {
       ({ startTime, endTime } = await approveAndStartAuction());
@@ -287,22 +286,22 @@ describe("Auction Tests", function () {
       it("should revert if the owner tries to place a bid", async function () {
         await expect(
           auctionContract.connect(owner).placeBid(1, 0, { value: 0 })
-        ).to.be.revertedWithCustomError(auctionContract, "OwnerCannotPlaceBids");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.OwnerCannotPlaceBids);
       });
 
       it("should revert if the bid quantity is zero", async function () {
         await expect(
           auctionContract.connect(alice).placeBid(0, parseEther("1"), { value: 0 })
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidQuantity");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidBidQuantity);
       });
 
       it("should revert if the bid price per token is zero", async function () {
         await expect(
           auctionContract.connect(alice).placeBid(1, 0, { value: parseEther("1") })
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidPricePerToken");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidPricePerToken);
         await expect(
           auctionContract.connect(alice).placeBid(1, parseUnits("1", 15), { value: 0 })
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidBidPrice);
       });
     });
 
@@ -345,7 +344,9 @@ describe("Auction Tests", function () {
           auctionContract
             .connect(alice)
             .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
-        ).to.be.revertedWithCustomError(auctionContract, "AuctionInActive");
+        )
+          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
+          .withArgs(AuctionStatus.ACTIVE, AuctionStatus.ENDED);
       });
 
       it("should measure gas cost for placing multiple bids", async function () {
@@ -368,7 +369,6 @@ describe("Auction Tests", function () {
       });
     });
   });
-  */
 
   /*
   describe("#submitMerkleData", function () {
