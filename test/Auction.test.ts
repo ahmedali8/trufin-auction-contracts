@@ -488,7 +488,6 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
   describe("#endAuction", function () {
     let startTime = 0;
     let endTime = 0;
@@ -500,10 +499,9 @@ describe("Auction Tests", function () {
 
     context("when prerequisites are not met", function () {
       it("should revert if merkle root has not been submitted", async function () {
-        await expect(auctionContract.connect(owner).endAuction()).to.be.revertedWithCustomError(
-          auctionContract,
-          "AuctionMerkleNotSubmitted"
-        );
+        await expect(auctionContract.connect(owner).endAuction())
+          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
+          .withArgs(AuctionStatus.MERKLE_SUBMITTED, AuctionStatus.ACTIVE);
       });
 
       it("should revert if the verification time is not over", async function () {
@@ -511,7 +509,7 @@ describe("Auction Tests", function () {
 
         await expect(auctionContract.connect(alice).endAuction()).to.be.revertedWithCustomError(
           auctionContract,
-          "VerificationPeriodNotOver"
+          AuctionErrors.VerificationPeriodNotOver
         );
       });
     });
@@ -532,7 +530,6 @@ describe("Auction Tests", function () {
       });
     });
   });
-  */
 
   /*
   describe("#claim", function () {
