@@ -25,7 +25,7 @@ import {
   VERIFICATION_WINDOW,
 } from "./shared/constants";
 import { AuctionErrors, ERC20TokenErrors, OwnableErrors } from "./shared/errors";
-import { auctionFixture, loadFixtures } from "./shared/fixtures";
+import { loadFixtures } from "./shared/fixtures";
 import {
   advanceToAuctionEnd,
   advanceToAuctionStart,
@@ -366,7 +366,8 @@ describe("Auction Tests", function () {
           );
         }
         const tx = await Promise.all(bids);
-        const gasUsed = await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
+        // const gasUsed =
+        await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
         // console.log(
         //   "Gas Used for 100 bids:",
         //   gasUsed.reduce((a, b) => a + b, 0n) / BigInt(gasUsed.length)
@@ -494,11 +495,10 @@ describe("Auction Tests", function () {
   });
 
   describe("#endAuction", function () {
-    let startTime = 0;
     let endTime = 0;
 
     beforeEach(async function () {
-      ({ startTime, endTime } = await approveAndStartAuction());
+      ({ endTime } = await approveAndStartAuction());
       await advanceToAuctionEnd(endTime);
     });
 
@@ -723,7 +723,6 @@ describe("Auction Tests", function () {
   });
 
   describe("#slash", function () {
-    let startTime = 0;
     let endTime = 0;
 
     const oldMerkleDataParams: IAuction.MerkleDataParamsStruct = {
@@ -742,7 +741,7 @@ describe("Auction Tests", function () {
     };
 
     beforeEach(async function () {
-      ({ startTime, endTime } = await approveAndStartAuction());
+      ({ endTime } = await approveAndStartAuction());
     });
 
     context("when called by non-verifier", function () {

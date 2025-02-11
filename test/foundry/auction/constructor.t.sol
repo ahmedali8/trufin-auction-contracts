@@ -7,6 +7,6 @@ contract Auction_Constructor_Test is Auction_Test {
     function test_Constructor_SetInitialOwnerAndVerifier() public view {
         // Verify the owner and verifier are set correctly.
         assertEq(address(auction.owner()), address(users.owner));
-        assertEq(auction.verifier(), users.verifier);
+        assertEq(auction.VERIFIER(), users.verifier);
     }
 }

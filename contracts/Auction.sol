@@ -18,7 +18,7 @@ import { IAuction } from "./interfaces/IAuction.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 // DATA TYPES
-import { Status, State, Bid } from "./types/DataTypes.sol";
+import { State, Bid } from "./types/DataTypes.sol";
 
 /// @title Auction
 /// @notice Implements a secure on-chain auction mechanism using a Merkle-based verification system.
@@ -42,7 +42,7 @@ contract Auction is IAuction, Ownable {
 
     /// @notice The trusted verifier (DAO, multisig, or Chainlink OCR) responsible for dispute
     /// resolution.
-    address public immutable verifier;
+    address public immutable VERIFIER;
 
     /// @notice The state of the auction, including status, token, and timing information.
     State public state;
@@ -61,7 +61,7 @@ contract Auction is IAuction, Ownable {
         if (initialVerifier == address(0)) {
             revert Errors.InvalidAddress(initialVerifier);
         }
-        verifier = initialVerifier;
+        VERIFIER = initialVerifier;
 
         emit VerifierSet(initialVerifier);
     }
@@ -145,13 +145,13 @@ contract Auction is IAuction, Ownable {
 
     /// @inheritdoc IAuction
     function slash(IAuction.MerkleDataParams calldata params) external override {
-        if (_msgSender() != verifier) {
+        if (_msgSender() != VERIFIER) {
             revert Errors.OnlyVerifierCanResolveDispute();
         }
         state.slash(params);
 
         // Reward verifier for catching fraud
-        verifier.sendValue(SECURITY_DEPOSIT);
+        VERIFIER.sendValue(SECURITY_DEPOSIT);
 
         emit MerkleRootUpdated(params.merkleRoot, params.digest, params.hashFunction, params.size);
         emit AuctioneerPenalized(SECURITY_DEPOSIT);
