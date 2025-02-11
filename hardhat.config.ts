@@ -85,9 +85,13 @@ const config: HardhatUserConfig = {
   gasReporter: {
     enabled: process.env.REPORT_GAS ? true : false,
     currency: "USD",
-    // gasPrice: process.env.GAS_PRICE, // if commented out then it fetches from ethGasStationAPI
+    L1Etherscan: process.env.ETHERSCAN_API_KEY || undefined,
     coinmarketcap: process.env.COIN_MARKET_CAP_API_KEY || undefined,
     excludeContracts: [],
+    reportFormat: "markdown",
+    outputFile: "gasReport.md",
+    forceTerminalOutput: true,
+    forceTerminalOutputFormat: "terminal",
   },
   namedAccounts: {
     owner: {
