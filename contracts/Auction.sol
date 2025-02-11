@@ -20,6 +20,7 @@ contract Auction is Ownable {
 
     uint256 public constant VERIFICATION_WINDOW = 2 hours; // 2-hour window
     uint256 public constant SECURITY_DEPOSIT = 0.5 ether; // Penalty to prevent fraud
+    uint256 public constant MIN_BID_PRICE_PER_TOKEN = StateLibrary.MIN_BID_PRICE_PER_TOKEN;
 
     address public verifier; // Trusted verifier (DAO, multisig, or Chainlink OCR)
     State public state;
@@ -115,19 +116,29 @@ contract Auction is Ownable {
         if (_msgSender() == owner()) {
             revert OwnerCannotPlaceABid();
         }
-        if (quantity == 0) {
-            revert InvalidBidQuantity();
-        }
-        if (pricePerToken == 0 || ((quantity * pricePerToken) / 1e18) != msg.value) {
+
+        state.placeBid(bids, nextBidId, _msgSender(), quantity, pricePerToken);
+
+        if (getBidPrice(quantity, pricePerToken) != msg.value) {
             revert InvalidBidPrice();
         }
-
-        bids[nextBidId] =
-            Bid({ bidder: _msgSender(), quantity: quantity, pricePerToken: pricePerToken });
 
         emit BidPlaced(nextBidId, _msgSender(), quantity, pricePerToken);
         nextBidId++;
     }
+
+    function getBidPrice(
+        uint128 quantity,
+        uint128 pricePerToken
+    )
+        public
+        pure
+        returns (uint128 price)
+    {
+        // use uint256 to avoid overflow
+        price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
+    }
+
     /*
 
     struct SubmitMerkleDataParams {
