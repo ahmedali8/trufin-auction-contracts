@@ -90,8 +90,11 @@ const config: HardhatUserConfig = {
     excludeContracts: [],
   },
   namedAccounts: {
-    deployer: {
-      default: 0, // here this will by default take the first account as deployer
+    owner: {
+      default: 0, // here this will by default take the first account as owner
+    },
+    verifier: {
+      default: 1, // here this will by default take the second account as verifier
     },
   },
   networks: {

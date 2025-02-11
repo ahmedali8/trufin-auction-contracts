@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.26;
+pragma solidity 0.8.26;
 
 /// @title IAuction
 /// @notice Interface defining the core functionality of an auction contract.

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.26;
+pragma solidity 0.8.26;
 
 // LIBRARIES
-import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { AddressLibrary } from "./libraries/AddressLibrary.sol";
 import { MultiHashLibrary } from "./libraries/MultiHashLibrary.sol";
 import { MerkleRootLibrary } from "./libraries/MerkleRootLibrary.sol";
@@ -43,7 +42,7 @@ contract Auction is IAuction, Ownable {
 
     /// @notice The trusted verifier (DAO, multisig, or Chainlink OCR) responsible for dispute
     /// resolution.
-    address public verifier;
+    address public immutable verifier;
 
     /// @notice The state of the auction, including status, token, and timing information.
     State public state;
@@ -53,14 +52,6 @@ contract Auction is IAuction, Ownable {
 
     /// @notice The next available bid ID to ensure unique identifiers.
     uint256 public nextBidId = 1;
-
-    /// @notice Restricts function access to the verifier only.
-    modifier onlyVerifier() {
-        if (_msgSender() != verifier) {
-            revert Errors.OnlyVerifierCanResolveDispute();
-        }
-        _;
-    }
 
     /// @notice Deploys the auction contract and sets the initial verifier.
     /// @dev The verifier is a trusted address responsible for dispute resolution.
@@ -90,7 +81,7 @@ contract Auction is IAuction, Ownable {
         state.startAuction(params);
 
         // take tokens from the owner and transfer them to this contract
-        IERC20(params.token).transferFrom(_msgSender(), address(this), params.totalTokens);
+        IERC20(params.token).safeTransferFrom(_msgSender(), address(this), params.totalTokens);
 
         emit AuctionStarted(params.token, params.totalTokens, params.startTime, params.endTime);
     }
@@ -147,13 +138,16 @@ contract Auction is IAuction, Ownable {
             emit ETHClaimed(_msgSender(), _ethAmount);
         } else {
             // Winning bidder: Transfer tokens
-            IERC20(state.token).transfer(_msgSender(), _bid.quantity);
+            IERC20(state.token).safeTransfer(_msgSender(), _bid.quantity);
             emit TokensClaimed(_msgSender(), _bid.quantity);
         }
     }
 
     /// @inheritdoc IAuction
-    function slash(IAuction.MerkleDataParams calldata params) external override onlyVerifier {
+    function slash(IAuction.MerkleDataParams calldata params) external override {
+        if (_msgSender() != verifier) {
+            revert Errors.OnlyVerifierCanResolveDispute();
+        }
         state.slash(params);
 
         // Reward verifier for catching fraud

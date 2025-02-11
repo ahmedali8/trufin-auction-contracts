@@ -5,12 +5,15 @@ import { verifyContract } from "../utils/verify";
 async function main() {
   const { chainId } = await ethers.provider.getNetwork();
 
-  const contractName = "Lock";
+  const contractName = "Auction";
   const contractPath = `contracts/${contractName}.sol:${contractName}`;
   const contractAddress = "";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const args: any[] = ["878979"];
+  const args: any[] = [
+    // owner address
+    // verifier address
+  ];
 
   // You don't want to verify on localhost
   if (chainId != 31337n && chainId != 1337n) {

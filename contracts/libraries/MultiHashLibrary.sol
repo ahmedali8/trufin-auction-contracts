@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity 0.8.26;
 
 /// @title MultiHashLibrary
 /// @notice Library for handling multi-hash validation.

@@ -4,33 +4,234 @@
       "name": "hardhat",
       "chainId": "31337",
       "contracts": {
-        "Lock": {
+        "Auction": {
           "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
           "abi": [
             {
               "inputs": [
                 {
-                  "internalType": "uint256",
-                  "name": "_unlockTime",
-                  "type": "uint256"
+                  "internalType": "address",
+                  "name": "initialOwner",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "initialVerifier",
+                  "type": "address"
                 }
               ],
-              "stateMutability": "payable",
+              "stateMutability": "nonpayable",
               "type": "constructor"
             },
             {
-              "inputs": [],
-              "name": "Lock_CallerNotOwner",
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "target",
+                  "type": "address"
+                }
+              ],
+              "name": "AddressEmptyCode",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "account",
+                  "type": "address"
+                }
+              ],
+              "name": "AddressInsufficientBalance",
               "type": "error"
             },
             {
               "inputs": [],
-              "name": "Lock_CannotWithdrawYet",
+              "name": "AuctionExists",
               "type": "error"
             },
             {
               "inputs": [],
-              "name": "Lock_UnlockTimeShouldBeInTheFuture",
+              "name": "BidDoesNotExist",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "CanOnlySubmitOnce",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "EthTransferFailed",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "FailedInnerCall",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                }
+              ],
+              "name": "InvalidAddress",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "enum Status",
+                  "name": "expected",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "enum Status",
+                  "name": "current",
+                  "type": "uint8"
+                }
+              ],
+              "name": "InvalidAuctionStatus",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "uint40",
+                  "name": "startTime",
+                  "type": "uint40"
+                },
+                {
+                  "internalType": "uint40",
+                  "name": "endTime",
+                  "type": "uint40"
+                }
+              ],
+              "name": "InvalidAuctionTimeParams",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "InvalidBidPrice",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "InvalidBidQuantity",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "bytes32[]",
+                  "name": "proof",
+                  "type": "bytes32[]"
+                }
+              ],
+              "name": "InvalidMerkleProof",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "bytes32",
+                  "name": "merkleRoot",
+                  "type": "bytes32"
+                }
+              ],
+              "name": "InvalidMerkleRoot",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "bytes32",
+                  "name": "digest",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "hashFunction",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "size",
+                  "type": "uint8"
+                }
+              ],
+              "name": "InvalidMultiHash",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "InvalidPricePerToken",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "InvalidSecurityDeposit",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "OnlyVerifierCanResolveDispute",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "owner",
+                  "type": "address"
+                }
+              ],
+              "name": "OwnableInvalidOwner",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "account",
+                  "type": "address"
+                }
+              ],
+              "name": "OwnableUnauthorizedAccount",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "OwnerCannotPlaceBids",
+              "type": "error"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "token",
+                  "type": "address"
+                }
+              ],
+              "name": "SafeERC20FailedOperation",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "VerificationPeriodNotOver",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "VerificationWindowExpired",
+              "type": "error"
+            },
+            {
+              "inputs": [],
+              "name": "ZeroTotalTokens",
               "type": "error"
             },
             {
@@ -38,26 +239,369 @@
               "inputs": [
                 {
                   "indexed": false,
+                  "internalType": "address",
+                  "name": "caller",
+                  "type": "address"
+                }
+              ],
+              "name": "AuctionEnded",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
+                  "internalType": "address",
+                  "name": "token",
+                  "type": "address"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint128",
+                  "name": "totalTokens",
+                  "type": "uint128"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint40",
+                  "name": "startTime",
+                  "type": "uint40"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint40",
+                  "name": "endTime",
+                  "type": "uint40"
+                }
+              ],
+              "name": "AuctionStarted",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
                   "internalType": "uint256",
-                  "name": "amount",
+                  "name": "penaltyAmount",
+                  "type": "uint256"
+                }
+              ],
+              "name": "AuctioneerPenalized",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": true,
+                  "internalType": "uint256",
+                  "name": "bidId",
                   "type": "uint256"
                 },
                 {
                   "indexed": false,
+                  "internalType": "address",
+                  "name": "bidder",
+                  "type": "address"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint128",
+                  "name": "quantity",
+                  "type": "uint128"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint128",
+                  "name": "pricePerToken",
+                  "type": "uint128"
+                }
+              ],
+              "name": "BidPlaced",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
+                  "internalType": "address",
+                  "name": "bidder",
+                  "type": "address"
+                },
+                {
+                  "indexed": false,
                   "internalType": "uint256",
-                  "name": "when",
+                  "name": "amount",
                   "type": "uint256"
                 }
               ],
-              "name": "Withdrawal",
+              "name": "ETHClaimed",
               "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
+                  "internalType": "bytes32",
+                  "name": "merkleRoot",
+                  "type": "bytes32"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "bytes32",
+                  "name": "digest",
+                  "type": "bytes32"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint8",
+                  "name": "hashFunction",
+                  "type": "uint8"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint8",
+                  "name": "size",
+                  "type": "uint8"
+                }
+              ],
+              "name": "MerkleRootSubmitted",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
+                  "internalType": "bytes32",
+                  "name": "merkleRoot",
+                  "type": "bytes32"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "bytes32",
+                  "name": "digest",
+                  "type": "bytes32"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint8",
+                  "name": "hashFunction",
+                  "type": "uint8"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint8",
+                  "name": "size",
+                  "type": "uint8"
+                }
+              ],
+              "name": "MerkleRootUpdated",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": true,
+                  "internalType": "address",
+                  "name": "previousOwner",
+                  "type": "address"
+                },
+                {
+                  "indexed": true,
+                  "internalType": "address",
+                  "name": "newOwner",
+                  "type": "address"
+                }
+              ],
+              "name": "OwnershipTransferred",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
+                  "internalType": "address",
+                  "name": "bidder",
+                  "type": "address"
+                },
+                {
+                  "indexed": false,
+                  "internalType": "uint256",
+                  "name": "quantity",
+                  "type": "uint256"
+                }
+              ],
+              "name": "TokensClaimed",
+              "type": "event"
+            },
+            {
+              "anonymous": false,
+              "inputs": [
+                {
+                  "indexed": false,
+                  "internalType": "address",
+                  "name": "verifier",
+                  "type": "address"
+                }
+              ],
+              "name": "VerifierSet",
+              "type": "event"
+            },
+            {
+              "inputs": [],
+              "name": "MIN_BID_PRICE_PER_TOKEN",
+              "outputs": [
+                {
+                  "internalType": "uint256",
+                  "name": "",
+                  "type": "uint256"
+                }
+              ],
+              "stateMutability": "view",
+              "type": "function"
+            },
+            {
+              "inputs": [],
+              "name": "SECURITY_DEPOSIT",
+              "outputs": [
+                {
+                  "internalType": "uint256",
+                  "name": "",
+                  "type": "uint256"
+                }
+              ],
+              "stateMutability": "view",
+              "type": "function"
+            },
+            {
+              "inputs": [],
+              "name": "VERIFICATION_WINDOW",
+              "outputs": [
+                {
+                  "internalType": "uint256",
+                  "name": "",
+                  "type": "uint256"
+                }
+              ],
+              "stateMutability": "view",
+              "type": "function"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "uint256",
+                  "name": "bidId",
+                  "type": "uint256"
+                }
+              ],
+              "name": "bids",
+              "outputs": [
+                {
+                  "internalType": "uint128",
+                  "name": "quantity",
+                  "type": "uint128"
+                },
+                {
+                  "internalType": "uint128",
+                  "name": "pricePerToken",
+                  "type": "uint128"
+                },
+                {
+                  "internalType": "address",
+                  "name": "bidder",
+                  "type": "address"
+                }
+              ],
+              "stateMutability": "view",
+              "type": "function"
+            },
+            {
+              "inputs": [
+                {
+                  "components": [
+                    {
+                      "internalType": "uint256",
+                      "name": "bidId",
+                      "type": "uint256"
+                    },
+                    {
+                      "internalType": "uint128",
+                      "name": "quantity",
+                      "type": "uint128"
+                    },
+                    {
+                      "internalType": "bytes32[]",
+                      "name": "proof",
+                      "type": "bytes32[]"
+                    }
+                  ],
+                  "internalType": "struct IAuction.ClaimParams",
+                  "name": "params",
+                  "type": "tuple"
+                }
+              ],
+              "name": "claim",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function"
+            },
+            {
+              "inputs": [],
+              "name": "endAuction",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "uint128",
+                  "name": "quantity",
+                  "type": "uint128"
+                },
+                {
+                  "internalType": "uint128",
+                  "name": "pricePerToken",
+                  "type": "uint128"
+                }
+              ],
+              "name": "getBidPrice",
+              "outputs": [
+                {
+                  "internalType": "uint128",
+                  "name": "price",
+                  "type": "uint128"
+                }
+              ],
+              "stateMutability": "pure",
+              "type": "function"
+            },
+            {
+              "inputs": [],
+              "name": "nextBidId",
+              "outputs": [
+                {
+                  "internalType": "uint256",
+                  "name": "",
+                  "type": "uint256"
+                }
+              ],
+              "stateMutability": "view",
+              "type": "function"
             },
             {
               "inputs": [],
               "name": "owner",
               "outputs": [
                 {
-                  "internalType": "address payable",
+                  "internalType": "address",
                   "name": "",
                   "type": "address"
                 }
@@ -66,23 +610,222 @@
               "type": "function"
             },
             {
+              "inputs": [
+                {
+                  "internalType": "uint128",
+                  "name": "quantity",
+                  "type": "uint128"
+                },
+                {
+                  "internalType": "uint128",
+                  "name": "pricePerToken",
+                  "type": "uint128"
+                }
+              ],
+              "name": "placeBid",
+              "outputs": [],
+              "stateMutability": "payable",
+              "type": "function"
+            },
+            {
               "inputs": [],
-              "name": "unlockTime",
+              "name": "renounceOwnership",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function"
+            },
+            {
+              "inputs": [
+                {
+                  "components": [
+                    {
+                      "internalType": "bytes32",
+                      "name": "merkleRoot",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "digest",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "uint8",
+                      "name": "hashFunction",
+                      "type": "uint8"
+                    },
+                    {
+                      "internalType": "uint8",
+                      "name": "size",
+                      "type": "uint8"
+                    }
+                  ],
+                  "internalType": "struct IAuction.MerkleDataParams",
+                  "name": "params",
+                  "type": "tuple"
+                }
+              ],
+              "name": "slash",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function"
+            },
+            {
+              "inputs": [
+                {
+                  "components": [
+                    {
+                      "internalType": "uint128",
+                      "name": "totalTokens",
+                      "type": "uint128"
+                    },
+                    {
+                      "internalType": "uint40",
+                      "name": "startTime",
+                      "type": "uint40"
+                    },
+                    {
+                      "internalType": "uint40",
+                      "name": "endTime",
+                      "type": "uint40"
+                    },
+                    {
+                      "internalType": "address",
+                      "name": "token",
+                      "type": "address"
+                    }
+                  ],
+                  "internalType": "struct IAuction.StartAuctionParams",
+                  "name": "params",
+                  "type": "tuple"
+                }
+              ],
+              "name": "startAuction",
+              "outputs": [],
+              "stateMutability": "payable",
+              "type": "function"
+            },
+            {
+              "inputs": [],
+              "name": "state",
               "outputs": [
                 {
-                  "internalType": "uint256",
-                  "name": "",
-                  "type": "uint256"
+                  "internalType": "enum Status",
+                  "name": "status",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint40",
+                  "name": "startTime",
+                  "type": "uint40"
+                },
+                {
+                  "internalType": "uint40",
+                  "name": "endTime",
+                  "type": "uint40"
+                },
+                {
+                  "internalType": "uint128",
+                  "name": "totalTokens",
+                  "type": "uint128"
+                },
+                {
+                  "internalType": "uint40",
+                  "name": "verificationDeadline",
+                  "type": "uint40"
+                },
+                {
+                  "internalType": "address",
+                  "name": "token",
+                  "type": "address"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "isOwnerSlashed",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "hashFunction",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "size",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "digest",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "merkleRoot",
+                  "type": "bytes32"
                 }
               ],
               "stateMutability": "view",
               "type": "function"
             },
             {
-              "inputs": [],
-              "name": "withdraw",
+              "inputs": [
+                {
+                  "components": [
+                    {
+                      "internalType": "bytes32",
+                      "name": "merkleRoot",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "digest",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "uint8",
+                      "name": "hashFunction",
+                      "type": "uint8"
+                    },
+                    {
+                      "internalType": "uint8",
+                      "name": "size",
+                      "type": "uint8"
+                    }
+                  ],
+                  "internalType": "struct IAuction.MerkleDataParams",
+                  "name": "params",
+                  "type": "tuple"
+                }
+              ],
+              "name": "submitMerkleData",
               "outputs": [],
               "stateMutability": "nonpayable",
+              "type": "function"
+            },
+            {
+              "inputs": [
+                {
+                  "internalType": "address",
+                  "name": "newOwner",
+                  "type": "address"
+                }
+              ],
+              "name": "transferOwnership",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function"
+            },
+            {
+              "inputs": [],
+              "name": "verifier",
+              "outputs": [
+                {
+                  "internalType": "address",
+                  "name": "",
+                  "type": "address"
+                }
+              ],
+              "stateMutability": "view",
               "type": "function"
             }
           ]
