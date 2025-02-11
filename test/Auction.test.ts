@@ -1,7 +1,7 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { ZeroAddress, parseEther, zeroPadBytes } from "ethers";
+import { ZeroAddress, parseEther, parseUnits, zeroPadBytes } from "ethers";
 import { ethers } from "hardhat";
 
 import { generateMerkleTree } from "../lib/merkle-tree/generate-merkle-tree";
@@ -271,101 +271,101 @@ describe("Auction Tests", function () {
     });
   });
 
-  // describe("#placeBid", function () {
-  //   let startTime = 0,
-  //     endTime = 0;
+  describe("#placeBid", function () {
+    let startTime = 0,
+      endTime = 0;
 
-  //   beforeEach(async function () {
-  //     ({ startTime, endTime } = await approveAndStartAuction());
+    beforeEach(async function () {
+      ({ startTime, endTime } = await approveAndStartAuction());
 
-  //     await advanceToAuctionStart(startTime);
-  //   });
+      await advanceToAuctionStart(startTime);
+    });
 
-  //   context("when the bid or params are invalid", function () {
-  //     it("should revert if the owner tries to place a bid", async function () {
-  //       await expect(
-  //         auctionContract.connect(owner).placeBid(1, 0, { value: 0 })
-  //       ).to.be.revertedWithCustomError(auctionContract, "OwnerCannotPlaceABid");
-  //     });
+    context("when the bid or params are invalid", function () {
+      it("should revert if the owner tries to place a bid", async function () {
+        await expect(
+          auctionContract.connect(owner).placeBid(1, 0, { value: 0 })
+        ).to.be.revertedWithCustomError(auctionContract, "OwnerCannotPlaceABid");
+      });
 
-  //     it("should revert if the bid quantity is zero", async function () {
-  //       await expect(
-  //         auctionContract.connect(alice).placeBid(0, parseEther("1"), { value: 0 })
-  //       ).to.be.revertedWithCustomError(auctionContract, "InvalidBidQuantity");
-  //     });
+      it("should revert if the bid quantity is zero", async function () {
+        await expect(
+          auctionContract.connect(alice).placeBid(0, parseEther("1"), { value: 0 })
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidQuantity");
+      });
 
-  //     it("should revert if the bid price per token is zero", async function () {
-  //       await expect(
-  //         auctionContract.connect(alice).placeBid(1, 0, { value: 0 })
-  //       ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
-  //       await expect(
-  //         auctionContract.connect(alice).placeBid(1, 0, { value: parseEther("1") })
-  //       ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
-  //     });
-  //   });
+      it("should revert if the bid price per token is zero", async function () {
+        await expect(
+          auctionContract.connect(alice).placeBid(1, 0, { value: parseEther("1") })
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidPricePerToken");
+        await expect(
+          auctionContract.connect(alice).placeBid(1, parseUnits("1", 15), { value: 0 })
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidBidPrice");
+      });
+    });
 
-  //   context("when the bid is valid", function () {
-  //     const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
+    context("when the bid is valid", function () {
+      const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
 
-  //     it("should place a bid successfully", async function () {
-  //       const contractBalBefore = await ethers.provider.getBalance(auctionAddress);
+      it("should place a bid successfully", async function () {
+        const contractBalBefore = await ethers.provider.getBalance(auctionAddress);
 
-  //       const expectedBidId = 1n;
-  //       const actualBidId = await auctionContract.nextBidId();
-  //       expect(actualBidId).to.equal(expectedBidId);
-  //       await expect(
-  //         auctionContract
-  //           .connect(alice)
-  //           .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
-  //       )
-  //         .to.emit(auctionContract, "BidPlaced")
-  //         .withArgs(actualBidId, alice.address, TOKEN_QUANTITY, PRICE_PER_TOKEN);
+        const expectedBidId = 1n;
+        const actualBidId = await auctionContract.nextBidId();
+        expect(actualBidId).to.equal(expectedBidId);
+        await expect(
+          auctionContract
+            .connect(alice)
+            .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
+        )
+          .to.emit(auctionContract, "BidPlaced")
+          .withArgs(actualBidId, alice.address, TOKEN_QUANTITY, PRICE_PER_TOKEN);
 
-  //       const bid = await auctionContract.bids(actualBidId);
+        const bid = await auctionContract.bids(actualBidId);
 
-  //       expect(bid.bidder).to.equal(alice.address);
-  //       expect(bid.quantity).to.equal(TOKEN_QUANTITY);
-  //       expect(bid.pricePerToken).to.equal(PRICE_PER_TOKEN);
+        expect(bid.bidder).to.equal(alice.address);
+        expect(bid.quantity).to.equal(TOKEN_QUANTITY);
+        expect(bid.pricePerToken).to.equal(PRICE_PER_TOKEN);
 
-  //       const actualNewBidId = await auctionContract.nextBidId();
-  //       const expectedNewBidId = expectedBidId + 1n;
-  //       expect(actualNewBidId).to.equal(expectedNewBidId);
+        const actualNewBidId = await auctionContract.nextBidId();
+        const expectedNewBidId = expectedBidId + 1n;
+        expect(actualNewBidId).to.equal(expectedNewBidId);
 
-  //       // assert the balance of the contract
-  //       const contractBalAfter = await ethers.provider.getBalance(auctionAddress);
-  //       expect(contractBalAfter).to.equal(totalPrice + contractBalBefore);
-  //     });
+        // assert the balance of the contract
+        const contractBalAfter = await ethers.provider.getBalance(auctionAddress);
+        expect(contractBalAfter).to.equal(totalPrice + contractBalBefore);
+      });
 
-  //     it("should revert if placing bid after auction ends", async function () {
-  //       await advanceToAuctionEnd(endTime);
+      it("should revert if placing bid after auction ends", async function () {
+        await advanceToAuctionEnd(endTime);
 
-  //       await expect(
-  //         auctionContract
-  //           .connect(alice)
-  //           .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
-  //       ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
-  //     });
+        await expect(
+          auctionContract
+            .connect(alice)
+            .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
+        ).to.be.revertedWithCustomError(auctionContract, "AuctionNotActive");
+      });
 
-  //     it("should measure gas cost for placing multiple bids", async function () {
-  //       const bids = [];
-  //       for (let i = 0; i < 100; i++) {
-  //         bids.push(
-  //           auctionContract
-  //             .connect(accounts[i % accounts.length])
-  //             .placeBid(parseEther("1"), parseEther("0.1"), {
-  //               value: parseEther("0.1"),
-  //             })
-  //         );
-  //       }
-  //       const tx = await Promise.all(bids);
-  //       const gasUsed = await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
-  //       // console.log(
-  //       //   "Gas Used for 100 bids:",
-  //       //   gasUsed.reduce((a, b) => a + b, 0n) / BigInt(gasUsed.length)
-  //       // );
-  //     });
-  //   });
-  // });
+      it("should measure gas cost for placing multiple bids", async function () {
+        const bids = [];
+        for (let i = 0; i < 100; i++) {
+          bids.push(
+            auctionContract
+              .connect(accounts[i % accounts.length])
+              .placeBid(parseEther("1"), parseEther("0.1"), {
+                value: parseEther("0.1"),
+              })
+          );
+        }
+        const tx = await Promise.all(bids);
+        const gasUsed = await Promise.all(tx.map(async (t) => (await t.wait())?.gasUsed || 0n));
+        // console.log(
+        //   "Gas Used for 100 bids:",
+        //   gasUsed.reduce((a, b) => a + b, 0n) / BigInt(gasUsed.length)
+        // );
+      });
+    });
+  });
 
   /*
 
