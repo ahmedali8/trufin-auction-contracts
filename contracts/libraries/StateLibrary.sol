@@ -53,11 +53,19 @@ library StateLibrary {
     )
         internal
     {
+        self._checkAuctionHasStarted();
+        self._checkAuctionHasEnded();
         self._checkStatus({ expected: Status.ACTIVE });
 
         bidder.checkAddressZero();
-        if (quantity == 0) revert Errors.InvalidBidQuantity();
-        if (pricePerToken < Constants.MIN_BID_PRICE_PER_TOKEN) revert Errors.InvalidPricePerToken();
+
+        if (quantity == 0) {
+            revert Errors.InvalidBidQuantity();
+        }
+
+        if (pricePerToken < Constants.MIN_BID_PRICE_PER_TOKEN) {
+            revert Errors.InvalidPricePerToken();
+        }
 
         // Store the bid
         bids[nextBidId] = Bid({ bidder: bidder, quantity: quantity, pricePerToken: pricePerToken });
@@ -69,16 +77,9 @@ library StateLibrary {
     )
         internal
     {
-        if (block.timestamp < self.startTime) {
-            revert Errors.InvalidAuctionStatus(Status.INACTIVE, Status.ACTIVE);
-        }
-
-        if (block.timestamp <= self.endTime) {
-            revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.MERKLE_SUBMITTED);
-        }
-
+        self._checkAuctionHasStarted();
+        self._checkAuctionIsOngoing();
         self.token.checkAddressZero();
-
         self._checkStatus({ expected: Status.ACTIVE });
 
         if (!params.merkleRoot.isMerkleRootValid()) {
@@ -180,43 +181,21 @@ library StateLibrary {
 
     /// Time-Based Auction Checks ///
 
-    function _checkAuctionTime(State storage self) internal view {
+    function _checkAuctionHasStarted(State storage self) internal view {
         if (block.timestamp < self.startTime) {
             revert Errors.InvalidAuctionStatus(Status.INACTIVE, Status.ACTIVE);
         }
+    }
 
+    function _checkAuctionIsOngoing(State storage self) internal view {
+        if (block.timestamp <= self.endTime) {
+            revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.MERKLE_SUBMITTED);
+        }
+    }
+
+    function _checkAuctionHasEnded(State storage self) internal view {
         if (block.timestamp > self.endTime) {
             revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.ENDED);
         }
     }
-
-    // // removed
-    // function _checkAuctionStatusNotEnded(State storage self) internal view {
-    //     if (self.status == Status.ENDED) {
-    //         revert Errors.AuctionAlreadyEnded();
-    //     }
-    // }
-
-    // // removed
-    // function _checkAuctionStatusEnded(State storage self) internal view {
-    //     if (self.status != Status.ACTIVE) {
-    //         revert Errors.AuctionInActive();
-    //     }
-    // }
-
-    // // removed
-    // function _checkAuctionIsInActive(State storage self) internal view {
-    //     if (block.timestamp <= self.endTime) {
-    //         revert Errors.AuctionActive();
-    //     }
-    // }
-
-    // // removed
-    // function _checkAuctionIsMerkleSubmitted(State storage self) internal view {
-    //     if (self.status != Status.MERKLE_SUBMITTED) {
-    //         revert Errors.InvalidAuctionState(
-    //             Errors.StatusCheck.MerkleSubmitted, Errors.StatusCheck.Active
-    //         );
-    //     }
-    // }
 }

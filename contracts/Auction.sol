@@ -61,7 +61,9 @@ contract Auction is Ownable {
 
     function startAuction(IAuction.StartAuctionParams memory params) external payable onlyOwner {
         // take the security deposit from the auctioneer to prevent fraud
-        if (msg.value != SECURITY_DEPOSIT) revert Errors.InvalidSecurityDeposit();
+        if (msg.value != SECURITY_DEPOSIT) {
+            revert Errors.InvalidSecurityDeposit();
+        }
 
         state.startAuction(params);
 
@@ -73,8 +75,6 @@ contract Auction is Ownable {
 
     // placeBid -> only callable by non-owner, places a bid
     function placeBid(uint128 quantity, uint128 pricePerToken) external payable {
-        state._checkAuctionTime();
-
         if (_msgSender() == owner()) {
             revert Errors.OwnerCannotPlaceBids();
         }
@@ -112,12 +112,12 @@ contract Auction is Ownable {
 
     // endAuction -> callable by anyone, finalizes the auction
     function endAuction() external {
-        // state._checkAuctionStatusNotEnded();
-        state._checkStatus({ expected: Status.MERKLE_SUBMITTED });
         state.endAuction();
 
         // Return security deposit if owner is not slashed
-        if (!state.isOwnerSlashed) owner().sendValue(Constants.SECURITY_DEPOSIT);
+        if (!state.isOwnerSlashed) {
+            owner().sendValue(Constants.SECURITY_DEPOSIT);
+        }
 
         emit AuctionEnded(_msgSender());
     }
