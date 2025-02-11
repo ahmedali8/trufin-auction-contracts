@@ -717,7 +717,6 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
   describe("#slash", function () {
     let startTime = 0;
     let endTime = 0;
@@ -752,15 +751,18 @@ describe("Auction Tests", function () {
 
         await expect(
           auctionContract.connect(alice).slash(slashParams)
-        ).to.be.revertedWithCustomError(auctionContract, "OnlyVerifierCanResolveDispute");
+        ).to.be.revertedWithCustomError(
+          auctionContract,
+          AuctionErrors.OnlyVerifierCanResolveDispute
+        );
       });
     });
 
     context("when merkle is not submitted", function () {
       it("should revert", async function () {
-        await expect(
-          auctionContract.connect(verifier).slash(oldMerkleDataParams)
-        ).to.be.revertedWithCustomError(auctionContract, "AuctionMerkleNotSubmitted");
+        await expect(auctionContract.connect(verifier).slash(oldMerkleDataParams))
+          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
+          .withArgs(AuctionStatus.MERKLE_SUBMITTED, AuctionStatus.ACTIVE);
       });
     });
 
@@ -781,7 +783,7 @@ describe("Auction Tests", function () {
 
         await expect(
           auctionContract.connect(verifier).slash(slashParams)
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleRoot");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidMerkleRoot);
       });
 
       it("should revert if the ipfs hash data is invalid", async function () {
@@ -794,7 +796,7 @@ describe("Auction Tests", function () {
 
         await expect(
           auctionContract.connect(verifier).slash(slashParams)
-        ).to.be.revertedWithCustomError(auctionContract, "InvalidMultiHash");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidMultiHash);
       });
 
       it("should revert if the merkle is set but verification time hash expired", async function () {
@@ -803,7 +805,7 @@ describe("Auction Tests", function () {
 
         await expect(
           auctionContract.connect(verifier).slash(newMerkleDataParams)
-        ).to.be.revertedWithCustomError(auctionContract, "VerificationWindowExpired");
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.VerificationWindowExpired);
       });
 
       it("should slash the owner and emit events", async function () {
@@ -816,5 +818,4 @@ describe("Auction Tests", function () {
       });
     });
   });
-   */
 });
