@@ -1,6 +1,7 @@
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { parseEther, parseUnits, zeroPadBytes } from "ethers";
 
+import { IAuction } from "../../types/contracts/Auction";
 import { ZERO_BYTES32 } from "../../utils/constants";
 import type { MockIpfs } from "./types";
 
@@ -28,4 +29,12 @@ export const MOCK_MULTI_HASH_IPFS: MockIpfs = {
   hashFunction: 18, // 0x12
   size: 32, // 0x20
   digest: "0xe1ed131d46ea375a367b0986d3713500a538006536fdd290afe41ce83380265f",
+};
+
+/// Mock Params ///
+export const MOCK_SUBMIT_MERKLE_DATA_PARAMS: IAuction.SubmitMerkleDataParamsStruct = {
+  merkleRoot: DUMMY_MERKLE_ROOT,
+  digest: MOCK_MULTI_HASH_IPFS.digest,
+  hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
+  size: MOCK_MULTI_HASH_IPFS.size,
 };
