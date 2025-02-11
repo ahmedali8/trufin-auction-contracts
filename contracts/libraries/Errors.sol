@@ -32,4 +32,5 @@ library Errors {
     error VerificationWindowExpired();
     error InvalidPricePerToken();
     error InvalidMultiHash();
+    error InvalidAuctionStatus();
 }

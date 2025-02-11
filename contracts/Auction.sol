@@ -11,6 +11,7 @@ import { MerkleRootLibrary } from "./libraries/MerkleRootLibrary.sol";
 import { StateLibrary } from "./libraries/StateLibrary.sol";
 import { IAuction } from "./interfaces/IAuction.sol";
 import { Constants } from "./libraries/Constants.sol";
+import { Errors } from "./libraries/Errors.sol";
 import "hardhat/console.sol";
 
 contract Auction is Ownable {
@@ -151,30 +152,23 @@ contract Auction is Ownable {
         emit MerkleRootSubmitted(params.merkleRoot, params.digest, params.hashFunction, params.size);
     }
 
-    /*
-
     // there would be a window between the call of submitMerkleRoot and endAuction that would act as
     // the dispute period for the auction set to 2 hours
 
     // endAuction -> callable by anyone, finalizes the auction
     function endAuction() external isNotFinalized {
-        if (auction.merkleRoot == bytes32(0)) {
-            revert InvalidMerkleRoot();
+        state.endAuction();
+
+        // Return security deposit if owner is not slashed
+        if (!state.isOwnerSlashed) {
+            (bool success,) = owner().call{ value: Constants.SECURITY_DEPOSIT }("");
+            if (!success) revert Errors.EthTransferFailed();
         }
 
-        // Prevent early finalization
-        if (block.timestamp <= verificationDeadline) {
-            revert VerificationPeriodNotOver();
-        }
-
-        if (!isAuctioneerSlashed) {
-            // refund the security deposit of owner
-            payable(owner()).transfer(SECURITY_DEPOSIT);
-        }
-
-        auction.isFinalized = true;
         emit AuctionFinalized(_msgSender());
     }
+
+    /*
 
     // claim -> only callable by the winners to claim tokens and pay money in eth
     function claim(uint256 bidId, uint256 quantity, bytes32[] calldata proof) external {

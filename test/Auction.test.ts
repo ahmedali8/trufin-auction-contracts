@@ -16,6 +16,7 @@ import {
   INVALID_MULTI_HASH_IPFS,
   INVALID_PROOF,
   MOCK_MULTI_HASH_IPFS,
+  MOCK_SUBMIT_MERKLE_DATA_PARAMS,
   PRICE_PER_TOKEN,
   SECURITY_DEPOSIT,
   TIME_BUFFER,
@@ -487,11 +488,9 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
-
   describe("#endAuction", function () {
-    let startTime = 0,
-      endTime = 0;
+    let startTime = 0;
+    let endTime = 0;
 
     beforeEach(async function () {
       ({ startTime, endTime } = await approveAndStartAuction());
@@ -502,12 +501,12 @@ describe("Auction Tests", function () {
       it("should revert if merkle root has not been submitted", async function () {
         await expect(auctionContract.connect(owner).endAuction()).to.be.revertedWithCustomError(
           auctionContract,
-          "InvalidMerkleRoot"
+          "InvalidAuctionStatus"
         );
       });
 
       it("should revert if the verification time is not over", async function () {
-        await auctionContract.connect(owner).submitMerkleData(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH);
+        await auctionContract.connect(owner).submitMerkleData(MOCK_SUBMIT_MERKLE_DATA_PARAMS);
 
         await expect(auctionContract.connect(alice).endAuction()).to.be.revertedWithCustomError(
           auctionContract,
@@ -518,7 +517,7 @@ describe("Auction Tests", function () {
 
     context("when successfully ending the auction", function () {
       beforeEach(async function () {
-        await auctionContract.connect(owner).submitMerkleData(DUMMY_MERKLE_ROOT, DUMMY_IPFS_HASH);
+        await auctionContract.connect(owner).submitMerkleData(MOCK_SUBMIT_MERKLE_DATA_PARAMS);
         await time.increase(VERIFICATION_WINDOW + TIME_BUFFER);
       });
 
@@ -527,11 +526,13 @@ describe("Auction Tests", function () {
           .to.emit(auctionContract, "AuctionFinalized")
           .withArgs(alice.address);
 
-        const auctionState = await auctionContract.auction();
-        expect(auctionState.isFinalized).to.equal(true);
+        const auctionState = await auctionContract.state();
+        expect(auctionState.status).to.equal(AuctionStatus.ENDED);
       });
     });
   });
+
+  /*
 
   describe("#slash", function () {
     let startTime = 0,

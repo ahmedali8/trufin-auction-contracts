@@ -87,4 +87,17 @@ library StateLibrary {
         self.verificationDeadline = uint40(block.timestamp + Constants.VERIFICATION_WINDOW);
         self.status = Status.MERKLE_SUBMITTED;
     }
+
+    function endAuction(State storage self) internal {
+        if (self.status != Status.MERKLE_SUBMITTED) {
+            revert Errors.InvalidAuctionStatus();
+        }
+
+        if (block.timestamp <= self.verificationDeadline) {
+            revert Errors.VerificationPeriodNotOver();
+        }
+
+        // Mark auction as ended
+        self.status = Status.ENDED;
+    }
 }
