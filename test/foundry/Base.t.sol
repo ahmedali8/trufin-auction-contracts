@@ -30,6 +30,7 @@ abstract contract Base_Test is Test {
         // Create users for testing.
         users = Users({
             owner: createUser("Owner"),
+            verifier: createUser("Verifier"),
             alice: createUser("Alice"),
             bob: createUser("Bob"),
             eve: createUser("Eve")

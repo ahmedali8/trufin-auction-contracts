@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.26;
 
 // LIBRARIES
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
@@ -64,15 +64,15 @@ contract Auction is IAuction, Ownable {
 
     /// @notice Deploys the auction contract and sets the initial verifier.
     /// @dev The verifier is a trusted address responsible for dispute resolution.
-    /// @param _initialOwner The address of the auction owner.
-    /// @param _initialVerifier The address of the verifier entity.
-    constructor(address _initialOwner, address _initialVerifier) Ownable(_initialOwner) {
-        if (_initialVerifier == address(0)) {
-            revert Errors.InvalidAddress(_initialVerifier);
+    /// @param initialOwner The address of the auction owner.
+    /// @param initialVerifier The address of the verifier entity.
+    constructor(address initialOwner, address initialVerifier) Ownable(initialOwner) {
+        if (initialVerifier == address(0)) {
+            revert Errors.InvalidAddress(initialVerifier);
         }
-        verifier = _initialVerifier;
+        verifier = initialVerifier;
 
-        emit VerifierSet(_initialVerifier);
+        emit VerifierSet(initialVerifier);
     }
 
     /// @inheritdoc IAuction

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.26;
 
 /// @title Auction Status Enum
 /// @notice Represents the different states an auction can be in.
