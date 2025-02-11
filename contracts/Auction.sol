@@ -4,24 +4,26 @@ pragma solidity ^0.8.23;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import { AuctionStatus, AuctionState, BidState } from "./types/DataTypes.sol";
+import { Status, State, Bid } from "./types/DataTypes.sol";
 import { AddressLibrary } from "./libraries/AddressLibrary.sol";
 import { MultiHashLibrary } from "./libraries/MultiHashLibrary.sol";
 import { MerkleRootLibrary } from "./libraries/MerkleRootLibrary.sol";
-
+import { StateLibrary } from "./libraries/StateLibrary.sol";
+import { IAuction } from "./interfaces/IAuction.sol";
 import "hardhat/console.sol";
 
 contract Auction is Ownable {
     using AddressLibrary for address;
     using MultiHashLibrary for bytes32;
     using MerkleRootLibrary for bytes32;
+    using StateLibrary for State;
 
     uint256 public constant VERIFICATION_WINDOW = 2 hours; // 2-hour window
     uint256 public constant SECURITY_DEPOSIT = 0.5 ether; // Penalty to prevent fraud
 
     address public verifier; // Trusted verifier (DAO, multisig, or Chainlink OCR)
-    AuctionState public auction;
-    mapping(uint256 bidId => BidState bid) public bids;
+    State public state;
+    mapping(uint256 bidId => Bid bid) public bids;
     uint256 public nextBidId = 1; // to save gas
 
     error AuctionAlreadyExists();
@@ -47,6 +49,7 @@ contract Auction is Ownable {
     error OnlyVerifierCanResolveDispute();
     error AuctionMustHaveAnInitialMerkleRoot();
     error VerificationWindowExpired();
+    error AddressZero();
 
     event AuctionStarted(address token, uint128 totalTokens, uint40 startTime, uint40 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint128 quantity, uint128 pricePerToken);
@@ -66,21 +69,21 @@ contract Auction is Ownable {
     }
 
     modifier onlyDuringAuction() {
-        if (block.timestamp < auction.startTime || block.timestamp > auction.endTime) {
+        if (block.timestamp < state.startTime || block.timestamp > state.endTime) {
             revert AuctionNotActive();
         }
         _;
     }
 
     modifier onlyAfterAuction() {
-        if (block.timestamp <= auction.endTime) {
+        if (block.timestamp <= state.endTime) {
             revert AuctionStillActive();
         }
         _;
     }
 
     modifier isNotFinalized() {
-        if (auction.status == AuctionStatus.ENDED) {
+        if (state.status == Status.ENDED) {
             revert AuctionAlreadyFinalized();
         }
         _;
@@ -95,43 +98,16 @@ contract Auction is Ownable {
         emit VerifierSet(_initialVerifier);
     }
 
-    // TODO: Functions to add:
-    // startAuction -> only callable by the owner, starts the auction
-    function startAuction(
-        address token,
-        uint128 totalTokens,
-        uint40 startTime,
-        uint40 endTime
-    )
-        external
-        payable
-        onlyOwner
-    {
+    function startAuction(IAuction.StartAuctionParams memory params) external payable onlyOwner {
         // take the security deposit from the auctioneer to prevent fraud
         if (msg.value != SECURITY_DEPOSIT) revert InvalidSecurityDeposit();
-        if (!auction.token.isAddressZero()) {
-            revert AuctionAlreadyExists();
-        }
-        if (token.isAddressZero()) {
-            revert InvalidTokenAddress();
-        }
-        if (totalTokens == 0) {
-            revert InvalidTotalTokens();
-        }
-        if (startTime < block.timestamp || endTime <= startTime) {
-            revert InvalidAuctionTime();
-        }
 
-        auction.status = AuctionStatus.STARTED;
-        auction.startTime = startTime;
-        auction.endTime = endTime;
-        auction.totalTokens = totalTokens;
-        auction.token = token;
+        state.startAuction(params);
 
         // take tokens from the owner and transfer them to this contract
-        IERC20(token).transferFrom(_msgSender(), address(this), totalTokens);
+        IERC20(params.token).transferFrom(_msgSender(), address(this), params.totalTokens);
 
-        emit AuctionStarted(token, totalTokens, startTime, endTime);
+        emit AuctionStarted(params.token, params.totalTokens, params.startTime, params.endTime);
     }
 
     // placeBid -> only callable by non-owner, places a bid
@@ -147,41 +123,46 @@ contract Auction is Ownable {
         }
 
         bids[nextBidId] =
-            BidState({ bidder: _msgSender(), quantity: quantity, pricePerToken: pricePerToken });
+            Bid({ bidder: _msgSender(), quantity: quantity, pricePerToken: pricePerToken });
 
         emit BidPlaced(nextBidId, _msgSender(), quantity, pricePerToken);
         nextBidId++;
     }
-
     /*
 
-    function submitMerkleRoot(
-        bytes32 merkleRoot,
-        string calldata ipfsHash
-    )
+    struct SubmitMerkleDataParams {
+        bytes32 merkleRoot;
+        // MultiHash
+        bytes32 digest;
+        uint8 hashFunction;
+        uint8 size;
+    }
+
+    function submitMerkleRoot(SubmitMerkleDataParams calldata params)
         external
         onlyOwner
         onlyAfterAuction
         isNotFinalized
     {
-        if (auction.merkleRoot != bytes32(0)) {
+        if (auction.merkleRoot.isMerkleRootValid()) {
             revert InvalidMerkleRoot(); // Auctioneer can only submit once
         }
 
-        if (merkleRoot == bytes32(0)) {
+        if (!params.merkleRoot.isMerkleRootValid()) {
             revert InvalidMerkleRoot();
         }
 
-        if (bytes(ipfsHash).length == 0) {
+        if (!params.digest.isMultiHashValid()) {
             revert InvalidIPFSHash();
         }
-        auction.merkleRoot = merkleRoot;
-        auction.ipfsHash = ipfsHash;
 
-        verificationDeadline = block.timestamp + VERIFICATION_WINDOW; // Set deadline
+        auction.merkleRoot = params.merkleRoot;
+        auction.ipfsHash = params.ipfsHash;
+        auction.verificationDeadline = block.timestamp + VERIFICATION_WINDOW; // Set deadline
 
-        emit MerkleRootSubmitted(merkleRoot, ipfsHash);
+        // emit MerkleRootSubmitted(merkleRoot, ipfsHash);
     }
+
 
     // there would be a window between the call of submitMerkleRoot and endAuction that would act as
     // the dispute period for the auction set to 2 hours
@@ -212,7 +193,7 @@ contract Auction is Ownable {
             revert AuctionNotFinalized();
         }
 
-        BidState memory _bid = bids[bidId];
+        Bid memory _bid = bids[bidId];
 
         if (_bid.bidder != _msgSender()) {
             revert BidDoesNotExist();
