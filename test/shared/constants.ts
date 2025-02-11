@@ -2,6 +2,7 @@ import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { parseEther, parseUnits, zeroPadBytes } from "ethers";
 
 import { ZERO_BYTES32 } from "../../utils/constants";
+import type { MockIpfs } from "./types";
 
 export const SECURITY_DEPOSIT = parseUnits("5", 17); // 0.5 ETH
 export const VERIFICATION_WINDOW = time.duration.hours(2);
@@ -16,3 +17,15 @@ export const INVALID_IPFS_HASH = "";
 export const DUMMY_MERKLE_ROOT = zeroPadBytes("0x01", 32);
 export const DUMMY_IPFS_HASH = "Test IPFS Hash";
 export const INVALID_PROOF = ["0xa7a72291e3c368d9052a4baa918856f83eca42f8862b56ad9b17bf3cb8038885"];
+export const INVALID_MULTI_HASH_IPFS: MockIpfs = {
+  multiHash: "",
+  hashFunction: 0,
+  size: 0,
+  digest: ZERO_BYTES32,
+};
+export const MOCK_MULTI_HASH_IPFS: MockIpfs = {
+  multiHash: "QmdYa7RaJuw8GCJqVtNFKgW67r6G9yythTLqTMcaacEs4J",
+  hashFunction: 18, // 0x12
+  size: 32, // 0x20
+  digest: "0xe1ed131d46ea375a367b0986d3713500a538006536fdd290afe41ce83380265f",
+};
