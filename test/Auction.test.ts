@@ -25,7 +25,7 @@ import {
   VERIFICATION_WINDOW,
 } from "./shared/constants";
 import { AuctionErrors, ERC20TokenErrors, OwnableErrors } from "./shared/errors";
-import { loadFixtures } from "./shared/fixtures";
+import { auctionFixture, loadFixtures } from "./shared/fixtures";
 import {
   advanceToAuctionEnd,
   advanceToAuctionStart,
@@ -87,6 +87,11 @@ describe("Auction Tests", function () {
   });
 
   describe("#constructor", function () {
+    it("should revert if the initial verifier is zero address", async function () {
+      const AuctionFactory = await ethers.getContractFactory("Auction");
+      await expect(AuctionFactory.connect(owner).deploy(owner.address, ZeroAddress)).to.be.reverted;
+    });
+
     it("should set the correct initial owner", async function () {
       const actualOwner = await auctionContract.owner();
       const expectedOwner = owner.address;
@@ -122,10 +127,10 @@ describe("Auction Tests", function () {
         };
 
         await expect(
-          auctionContract.connect(alice).startAuction(startAuctionParams, {
+          auctionContract.connect(owner).startAuction(startAuctionParams, {
             value: 0n,
           })
-        ).to.be.revertedWithCustomError(auctionContract, OwnableErrors.OwnableUnauthorizedAccount);
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidSecurityDeposit);
       });
     });
 
