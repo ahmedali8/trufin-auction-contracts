@@ -16,4 +16,10 @@ interface IAuction {
         uint8 hashFunction;
         uint8 size;
     }
+
+    struct ClaimParams {
+        uint256 bidId;
+        uint256 quantity;
+        bytes32[] proof;
+    }
 }

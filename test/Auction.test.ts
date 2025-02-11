@@ -532,6 +532,193 @@ describe("Auction Tests", function () {
     });
   });
 
+  describe("#claim", function () {
+    const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
+
+    let startTime = 0;
+    let endTime = 0;
+    let root = "";
+    let proofs: Record<string, string[]> = {}; // bidder => proof
+    let bids: { bidder: SignerWithAddress; quantity: bigint; bidId: bigint }[] = [];
+
+    beforeEach(async function () {
+      ({ startTime, endTime } = await approveAndStartAuction());
+      bids = [
+        { bidder: alice, quantity: TOKEN_QUANTITY, bidId: 1n },
+        { bidder: bob, quantity: TOKEN_QUANTITY, bidId: 2n },
+        { bidder: accounts[0], quantity: TOKEN_QUANTITY, bidId: 3n },
+      ];
+
+      await advanceToAuctionStart(startTime);
+
+      for (const { bidder, quantity } of bids) {
+        await auctionContract.connect(bidder).placeBid(quantity, PRICE_PER_TOKEN, {
+          value: totalPrice,
+        });
+      }
+
+      await advanceToAuctionEnd(endTime);
+
+      // create a merkle root
+      // We set the quantity to 0 for the accounts[0] bidder so he can't claim the tokens
+      const data = bids.map((bid) => ({
+        bidder: bid.bidder.address,
+        quantity: bid.bidder.address == accounts[0].address ? 0n : bid.quantity,
+      }));
+
+      ({ root, proofs } = generateMerkleTree(data));
+      const submitMerkleDataParams: IAuction.SubmitMerkleDataParamsStruct = {
+        merkleRoot: root,
+        digest: MOCK_MULTI_HASH_IPFS.digest,
+        hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
+        size: MOCK_MULTI_HASH_IPFS.size,
+      };
+      await auctionContract.connect(owner).submitMerkleData(submitMerkleDataParams);
+    });
+
+    it("should revert if the auction is not finalized", async function () {
+      const bidId = bids[0].bidId;
+
+      const claimParams: IAuction.ClaimParamsStruct = {
+        bidId: bidId,
+        quantity: TOKEN_QUANTITY,
+        proof: INVALID_PROOF,
+      };
+
+      await expect(auctionContract.connect(alice).claim(claimParams)).to.be.revertedWithCustomError(
+        auctionContract,
+        "AuctionNotFinalized"
+      );
+    });
+
+    context("when auction is finished", function () {
+      beforeEach(async function () {
+        await time.increase(VERIFICATION_WINDOW + TIME_BUFFER);
+        await auctionContract.connect(bob).endAuction();
+
+        // Mint some tokens to the auction contract
+        await tokenContract.mint(auctionAddress, TOKEN_AMOUNT);
+      });
+
+      context("when claim conditions are invalid", function () {
+        it("should revert if the bid does not exist", async function () {
+          const nonExistentBidId = 999;
+
+          const claimParams: IAuction.ClaimParamsStruct = {
+            bidId: nonExistentBidId,
+            quantity: TOKEN_QUANTITY,
+            proof: INVALID_PROOF,
+          };
+
+          await expect(
+            auctionContract.connect(alice).claim(claimParams)
+          ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
+        });
+
+        it("should revert if tokens are already claimed", async function () {
+          const bidId = bids[0].bidId;
+
+          const claimParams: IAuction.ClaimParamsStruct = {
+            bidId: bidId,
+            quantity: TOKEN_QUANTITY,
+            proof: proofs[alice.address],
+          };
+
+          // Claim tokens for the first time
+          await auctionContract.connect(alice).claim(claimParams);
+
+          // Try to claim tokens again
+          await expect(
+            auctionContract.connect(alice).claim(claimParams)
+          ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
+        });
+
+        it("should revert when winner tries to claim eth", async function () {
+          const bidId = bids[0].bidId;
+
+          // Alice is the winner and she should give correct quantity but she gave 0 to claim the eth
+          const claimParams: IAuction.ClaimParamsStruct = {
+            bidId: bidId,
+            quantity: 0n,
+            proof: proofs[alice.address],
+          };
+
+          // This would fail with `InvalidProof()` as the given quantity is not correct and won't be verified
+          await expect(
+            auctionContract.connect(alice).claim(claimParams)
+          ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
+        });
+
+        it("should revert when non-winner tries to claim tokens", async function () {
+          const caller = accounts[0];
+          const bidId = bids[2].bidId;
+
+          // caller is not the winner and he should give correct quantity (0) but he gave 100 to claim the tokens
+          const claimParams: IAuction.ClaimParamsStruct = {
+            bidId: bidId,
+            quantity: parseEther("100"),
+            proof: proofs[caller.address],
+          };
+
+          // This would fail with `InvalidProof()` as the given quantity is not correct and won't be verified
+          await expect(
+            auctionContract.connect(caller).claim(claimParams)
+          ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
+        });
+      });
+
+      context("when claims are valid", function () {
+        it("should allow winner to claim tokens successfully", async function () {
+          const bidId = bids[0].bidId;
+
+          const quantity = (await auctionContract.bids(bidId)).quantity;
+
+          const aliceBalanceBefore = await tokenContract.balanceOf(alice.address);
+
+          const claimParams: IAuction.ClaimParamsStruct = {
+            bidId: bidId,
+            quantity: quantity,
+            proof: proofs[alice.address],
+          };
+
+          await expect(auctionContract.connect(alice).claim(claimParams))
+            .to.emit(auctionContract, "TokensClaimed")
+            .withArgs(alice.address, quantity);
+
+          const bid = await auctionContract.bids(bidId);
+          expect(bid.quantity).to.equal(0);
+
+          const aliceBalanceAfter = await tokenContract.balanceOf(alice.address);
+          expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + quantity);
+        });
+
+        it("should allow non-winner to claim eth successfully", async function () {
+          const bidder = bids[2].bidder;
+          const bidId = bids[2].bidId;
+          const quantity = 0; // non-winner
+
+          const beforeBal = await ethers.provider.getBalance(bidder.address);
+
+          const claimParams: IAuction.ClaimParamsStruct = {
+            bidId: bidId,
+            quantity: quantity,
+            proof: proofs[bidder.address],
+          };
+
+          const gasFeeDelta = await getGasFee(auctionContract.connect(bidder).claim(claimParams));
+          const bid = await auctionContract.bids(bidId);
+          expect(bid.bidder).to.equal(ZeroAddress);
+          expect(bid.quantity).to.equal(0);
+
+          const afterBal = await ethers.provider.getBalance(bidder.address);
+
+          // 0.000049256451344628 eth fee delta
+          expect(afterBal).to.approximately(beforeBal + totalPrice, gasFeeDelta);
+        });
+      });
+    });
+  });
+
   /*
 
   describe("#slash", function () {
@@ -599,150 +786,6 @@ describe("Auction Tests", function () {
         );
         const balAfter = await ethers.provider.getBalance(verifier.address);
         expect(balAfter).to.approximately(balBefore + SECURITY_DEPOSIT, gasFee);
-      });
-    });
-  });
-
-  describe("#claim", function () {
-    const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
-
-    let startTime = 0;
-    let endTime = 0;
-    let root = "";
-    let proofs: Record<string, string[]> = {}; // bidder => proof
-    let bids: { bidder: SignerWithAddress; quantity: bigint; bidId: bigint }[] = [];
-
-    beforeEach(async function () {
-      ({ startTime, endTime } = await approveAndStartAuction());
-      bids = [
-        { bidder: alice, quantity: TOKEN_QUANTITY, bidId: 1n },
-        { bidder: bob, quantity: TOKEN_QUANTITY, bidId: 2n },
-        { bidder: accounts[0], quantity: TOKEN_QUANTITY, bidId: 3n },
-      ];
-
-      await advanceToAuctionStart(startTime);
-
-      for (const { bidder, quantity } of bids) {
-        await auctionContract.connect(bidder).placeBid(quantity, PRICE_PER_TOKEN, {
-          value: totalPrice,
-        });
-      }
-
-      await advanceToAuctionEnd(endTime);
-
-      // create a merkle root
-      // We set the quantity to 0 for the accounts[0] bidder so he can't claim the tokens
-      const data = bids.map((bid) => ({
-        bidder: bid.bidder.address,
-        quantity: bid.bidder.address == accounts[0].address ? 0n : bid.quantity,
-      }));
-
-      ({ root, proofs } = generateMerkleTree(data));
-      await auctionContract.connect(owner).submitMerkleData(root, DUMMY_IPFS_HASH);
-    });
-
-    it("should revert if the auction is not finalized", async function () {
-      const bidId = bids[0].bidId;
-
-      await expect(
-        auctionContract.connect(alice).claim(bidId, TOKEN_QUANTITY, INVALID_PROOF)
-      ).to.be.revertedWithCustomError(auctionContract, "AuctionNotFinalized");
-    });
-
-    context("when auction is finished", function () {
-      beforeEach(async function () {
-        await time.increase(VERIFICATION_WINDOW + TIME_BUFFER);
-        await auctionContract.connect(bob).endAuction();
-
-        // Mint some tokens to the auction contract
-        await tokenContract.mint(auctionAddress, TOKEN_AMOUNT);
-      });
-
-      context("when claim conditions are invalid", function () {
-        it("should revert if the bid does not exist", async function () {
-          const nonExistentBidId = 999;
-
-          await expect(
-            auctionContract.connect(alice).claim(nonExistentBidId, TOKEN_QUANTITY, INVALID_PROOF)
-          ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
-        });
-
-        it("should revert if tokens are already claimed", async function () {
-          const bidId = bids[0].bidId;
-
-          // Claim tokens for the first time
-          await auctionContract.connect(alice).claim(bidId, TOKEN_QUANTITY, proofs[alice.address]);
-
-          // Try to claim tokens again
-          await expect(
-            auctionContract.connect(alice).claim(bidId, TOKEN_QUANTITY, proofs[alice.address])
-          ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
-        });
-
-        it("should revert when winner tries to claim eth", async function () {
-          const bidId = bids[0].bidId;
-
-          // Alice is the winner and she should give correct quantity but she gave 0 to claim the eth
-          const _quantity = 0n;
-
-          // This would fail with `InvalidProof()` as the given quantity is not correct and won't be verified
-          await expect(
-            auctionContract.connect(alice).claim(bidId, _quantity, proofs[alice.address])
-          ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
-        });
-
-        it("should revert when non-winner tries to claim tokens", async function () {
-          const caller = accounts[0];
-          const bidId = bids[2].bidId;
-
-          // caller is not the winner and he should give correct quantity (0) but he gave 100 to claim the tokens
-          const _quantity = parseEther("100");
-
-          // This would fail with `InvalidProof()` as the given quantity is not correct and won't be verified
-          await expect(
-            auctionContract.connect(caller).claim(bidId, _quantity, proofs[caller.address])
-          ).to.be.revertedWithCustomError(auctionContract, "InvalidProof");
-        });
-      });
-
-      context("when claims are valid", function () {
-        it("should allow winner to claim tokens successfully", async function () {
-          const bidId = bids[0].bidId;
-
-          const quantity = (await auctionContract.bids(bidId)).quantity;
-
-          const aliceBalanceBefore = await tokenContract.balanceOf(alice.address);
-
-          await expect(auctionContract.connect(alice).claim(bidId, quantity, proofs[alice.address]))
-            .to.emit(auctionContract, "TokensClaimed")
-            .withArgs(alice.address, quantity);
-
-          const bid = await auctionContract.bids(bidId);
-          expect(bid.quantity).to.equal(0);
-
-          const aliceBalanceAfter = await tokenContract.balanceOf(alice.address);
-          expect(aliceBalanceAfter).to.equal(aliceBalanceBefore + quantity);
-        });
-
-        it("should allow non-winner to claim eth successfully", async function () {
-          const bidder = bids[2].bidder;
-          const bidId = bids[2].bidId;
-          const quantity = 0; // non-winner
-
-          const beforeBal = await ethers.provider.getBalance(bidder.address);
-
-          const gasFeeDelta = await getGasFee(
-            auctionContract.connect(bidder).claim(bidId, quantity, proofs[bidder.address])
-          );
-          const bid = await auctionContract.bids(bidId);
-          expect(bid.bidder).to.equal(ZeroAddress);
-          expect(bid.quantity).to.equal(0);
-
-          const afterBal = await ethers.provider.getBalance(bidder.address);
-
-          // 0.000049256451344628 eth fee delta
-          expect(afterBal).to.approximately(beforeBal + totalPrice, gasFeeDelta);
-        });
       });
     });
   });

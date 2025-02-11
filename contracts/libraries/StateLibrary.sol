@@ -8,6 +8,7 @@ import { MultiHashLibrary } from "./MultiHashLibrary.sol";
 import { MerkleRootLibrary } from "./MerkleRootLibrary.sol";
 import { IAuction } from "../interfaces/IAuction.sol";
 import { Constants } from "./Constants.sol";
+import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 import { console } from "hardhat/console.sol";
 
@@ -99,5 +100,32 @@ library StateLibrary {
 
         // Mark auction as ended
         self.status = Status.ENDED;
+    }
+
+    function claim(
+        State storage self,
+        mapping(uint256 => Bid) storage bids,
+        IAuction.ClaimParams memory params,
+        Bid memory currentBid,
+        address caller
+    )
+        internal
+    {
+        if (self.status != Status.ENDED) {
+            revert Errors.AuctionNotFinalized();
+        }
+
+        if (currentBid.bidder != caller) {
+            revert Errors.BidDoesNotExist();
+        }
+
+        // Verify the Merkle proof to prevent false claims
+        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(caller, params.quantity))));
+        if (!MerkleProof.verify(params.proof, self.merkleRoot, _leaf)) {
+            revert Errors.InvalidProof();
+        }
+
+        // Remove the bid from storage after successful validation
+        delete bids[params.bidId];
     }
 }

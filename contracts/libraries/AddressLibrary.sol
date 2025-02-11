@@ -22,4 +22,11 @@ library AddressLibrary {
             revert Errors.AddressZero();
         }
     }
+
+    function sendValue(address recipient, uint256 amount) internal {
+        (bool _success,) = payable(recipient).call{ value: amount }("");
+        if (!_success) {
+            revert Errors.EthTransferFailed();
+        }
+    }
 }

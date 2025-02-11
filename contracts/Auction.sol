@@ -160,50 +160,30 @@ contract Auction is Ownable {
         state.endAuction();
 
         // Return security deposit if owner is not slashed
-        if (!state.isOwnerSlashed) {
-            (bool success,) = owner().call{ value: Constants.SECURITY_DEPOSIT }("");
-            if (!success) revert Errors.EthTransferFailed();
-        }
+        if (!state.isOwnerSlashed) owner().sendValue(Constants.SECURITY_DEPOSIT);
 
         emit AuctionFinalized(_msgSender());
     }
 
-    /*
-
     // claim -> only callable by the winners to claim tokens and pay money in eth
-    function claim(uint256 bidId, uint256 quantity, bytes32[] calldata proof) external {
-        if (!auction.isFinalized) {
-            revert AuctionNotFinalized();
-        }
+    function claim(IAuction.ClaimParams calldata params) external {
+        Bid memory _bid = bids[params.bidId];
 
-        Bid memory _bid = bids[bidId];
+        state.claim(bids, params, _bid, _msgSender());
 
-        if (_bid.bidder != _msgSender()) {
-            revert BidDoesNotExist();
-        }
-
-        // Verify the Merkle proof
-        // If user gives false quantity then merkle proof would fail
-        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(_msgSender(), quantity))));
-        if (!MerkleProof.verify(proof, auction.merkleRoot, _leaf)) revert InvalidProof();
-
-        // update state
-        delete bids[bidId];
-
-        if (quantity == 0) {
-            // it means user is non-winner and would claim eth
-            uint256 _ethAmount = (_bid.quantity * _bid.pricePerToken) / 1e18;
-
-            (bool success,) = _bid.bidder.call{ value: _ethAmount }("");
-            if (!success) {
-                revert EthTransferFailed();
-            }
+        if (params.quantity == 0) {
+            // Non-Winning bidder: Refund ETH
+            uint128 _ethAmount = getBidPrice(_bid.quantity, _bid.pricePerToken);
+            _bid.bidder.sendValue(_ethAmount);
             emit ETHClaimed(_msgSender(), _ethAmount);
         } else {
-            IERC20(auction.token).transfer(_msgSender(), _bid.quantity);
+            // Winning bidder: Transfer tokens
+            IERC20(state.token).transfer(_msgSender(), _bid.quantity);
             emit TokensClaimed(_msgSender(), _bid.quantity);
         }
     }
+
+    /*
 
     function slash(bytes32 newRoot, string calldata newIpfsHash) external onlyVerifier {
         if (newRoot == bytes32(0) || newRoot == auction.merkleRoot) {
