@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.23;
 
-enum AuctionStatus {
+enum Status {
     STARTED,
     MERKLE_SUBMITTED,
     ENDED
 }
 
-struct AuctionState {
+struct State {
     // slot 0
-    AuctionStatus status; // 1 byte
+    Status status; // 1 byte
     uint40 startTime; // 5 bytes
     uint40 endTime; // 5 bytes
     uint128 totalTokens; // 16 bytes
@@ -25,7 +25,7 @@ struct AuctionState {
     bytes32 merkleRoot; // 32 bytes
 }
 
-struct BidState {
+struct Bid {
     // slot 0
     uint128 quantity; // 16 bytes
     uint128 pricePerToken; // 16 bytes
