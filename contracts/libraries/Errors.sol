@@ -6,7 +6,7 @@ pragma solidity ^0.8.22;
 /// @notice Library to manage error messages for the LaunchpadV3 contracts.
 library Errors {
     error AddressZero();
-
+    error CanOnlySubmitOnce();
     error AuctionAlreadyExists();
     error InvalidAuctionTime();
     error InvalidTokenAddress();
@@ -30,4 +30,6 @@ library Errors {
     error OnlyVerifierCanResolveDispute();
     error AuctionMustHaveAnInitialMerkleRoot();
     error VerificationWindowExpired();
+    error InvalidPricePerToken();
+    error InvalidMultiHash();
 }
