@@ -1,23 +1,37 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import { State, Status, Bid } from "../types/DataTypes.sol";
+// LIBRARIES
 import { Errors } from "./Errors.sol";
 import { AddressLibrary } from "./AddressLibrary.sol";
 import { MultiHashLibrary } from "./MultiHashLibrary.sol";
 import { MerkleRootLibrary } from "./MerkleRootLibrary.sol";
-import { IAuction } from "../interfaces/IAuction.sol";
 import { Constants } from "./Constants.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { MultiHashLibrary } from "./MultiHashLibrary.sol";
-import { console } from "hardhat/console.sol";
 
+// INTERFACES
+import { IAuction } from "../interfaces/IAuction.sol";
+
+// DATA TYPES
+import { State, Status, Bid } from "../types/DataTypes.sol";
+
+/// @title StateLibrary
+/// @notice Manages state-related operations for an auction contract, ensuring security and
+/// correctness.
+/// @dev Implements various functions for handling auction state transitions, bid placements, and
+/// verification.
 library StateLibrary {
     using StateLibrary for State;
     using AddressLibrary for address;
     using MultiHashLibrary for bytes32;
     using MerkleRootLibrary for bytes32;
 
+    /// @notice Initializes and starts an auction.
+    /// @dev Ensures valid parameters and sets the auction as ACTIVE.
+    /// @param self The state of the auction.
+    /// @param params The auction parameters, including token address, total tokens, start time, and
+    /// end time.
     function startAuction(State storage self, IAuction.StartAuctionParams memory params) internal {
         if (!self.token.isAddressZero()) {
             revert Errors.AuctionExists();
@@ -43,6 +57,14 @@ library StateLibrary {
         self.endTime = params.endTime;
     }
 
+    /// @notice Places a bid in the auction.
+    /// @dev Ensures that bidding conditions are met before storing the bid.
+    /// @param self The state of the auction.
+    /// @param bids The mapping of bid IDs to bids.
+    /// @param nextBidId The next available bid ID.
+    /// @param bidder The address of the bidder.
+    /// @param quantity The amount of tokens the bidder wants to buy.
+    /// @param pricePerToken The price per token in ETH.
     function placeBid(
         State storage self,
         mapping(uint256 => Bid) storage bids,
@@ -71,6 +93,10 @@ library StateLibrary {
         bids[nextBidId] = Bid({ bidder: bidder, quantity: quantity, pricePerToken: pricePerToken });
     }
 
+    /// @notice Submits Merkle data after the auction ends.
+    /// @dev Ensures the auction is in a valid state and only allows one submission.
+    /// @param self The state of the auction.
+    /// @param params The Merkle data parameters.
     function submitMerkleData(
         State storage self,
         IAuction.MerkleDataParams memory params
@@ -103,6 +129,9 @@ library StateLibrary {
         self.status = Status.MERKLE_SUBMITTED;
     }
 
+    /// @notice Ends the auction and transitions to the final state.
+    /// @dev Ensures the verification period has passed before ending the auction.
+    /// @param self The state of the auction.
     function endAuction(State storage self) internal {
         self._checkStatus({ expected: Status.MERKLE_SUBMITTED });
 
@@ -114,6 +143,13 @@ library StateLibrary {
         self.status = Status.ENDED;
     }
 
+    /// @notice Allows a winning bidder to claim tokens or a non-winning bidder to claim a refund.
+    /// @dev Verifies the bid's validity using the Merkle proof.
+    /// @param self The state of the auction.
+    /// @param bids The mapping of bid IDs to bids.
+    /// @param params The claim parameters.
+    /// @param currentBid The bid details for the claimant.
+    /// @param caller The address calling the function.
     function claim(
         State storage self,
         mapping(uint256 => Bid) storage bids,
@@ -139,6 +175,10 @@ library StateLibrary {
         delete bids[params.bidId];
     }
 
+    /// @notice Slashes the auctioneer in case of fraud and rewards the verifier.
+    /// @dev Ensures slashing happens within the verification window.
+    /// @param self The state of the auction.
+    /// @param params The Merkle data used for verification.
     function slash(State storage self, IAuction.MerkleDataParams memory params) internal {
         self._checkStatus({ expected: Status.MERKLE_SUBMITTED });
 
@@ -173,6 +213,9 @@ library StateLibrary {
 
     /// Enum-Based Auction Checks ///
 
+    /// @notice Ensures the auction is in a specific state before proceeding.
+    /// @param self The state of the auction.
+    /// @param expected The expected status.
     function _checkStatus(State storage self, Status expected) internal view {
         if (self.status != expected) {
             revert Errors.InvalidAuctionStatus(expected, self.status);
@@ -181,18 +224,24 @@ library StateLibrary {
 
     /// Time-Based Auction Checks ///
 
+    /// @notice Ensures the auction has started.
+    /// @param self The state of the auction.
     function _checkAuctionHasStarted(State storage self) internal view {
         if (block.timestamp < self.startTime) {
             revert Errors.InvalidAuctionStatus(Status.INACTIVE, Status.ACTIVE);
         }
     }
 
+    /// @notice Ensures the auction is ongoing.
+    /// @param self The state of the auction.
     function _checkAuctionIsOngoing(State storage self) internal view {
         if (block.timestamp <= self.endTime) {
             revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.MERKLE_SUBMITTED);
         }
     }
 
+    /// @notice Ensures the auction has ended.
+    /// @param self The state of the auction.
     function _checkAuctionHasEnded(State storage self) internal view {
         if (block.timestamp > self.endTime) {
             revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.ENDED);

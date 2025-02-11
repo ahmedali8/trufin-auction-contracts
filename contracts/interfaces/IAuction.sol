@@ -44,6 +44,33 @@ interface IAuction {
         bytes32[] proof;
     }
 
+    /// @notice Event emitted when an auction is started.
+    event AuctionStarted(address token, uint128 totalTokens, uint40 startTime, uint40 endTime);
+
+    /// @notice Event emitted when a bid is placed.
+    event BidPlaced(uint256 indexed bidId, address bidder, uint128 quantity, uint128 pricePerToken);
+
+    /// @notice Event emitted when Merkle root data is submitted.
+    event MerkleRootSubmitted(bytes32 merkleRoot, bytes32 digest, uint8 hashFunction, uint8 size);
+
+    /// @notice Event emitted when the auction is successfully ended.
+    event AuctionEnded(address caller);
+
+    /// @notice Event emitted when a winning bidder claims tokens.
+    event TokensClaimed(address bidder, uint256 quantity);
+
+    /// @notice Event emitted when a non-winning bidder claims a refund.
+    event ETHClaimed(address bidder, uint256 amount);
+
+    /// @notice Event emitted when the Merkle root is updated during a slashing event.
+    event MerkleRootUpdated(bytes32 merkleRoot, bytes32 digest, uint8 hashFunction, uint8 size);
+
+    /// @notice Event emitted when the auctioneer is penalized for misconduct.
+    event AuctioneerPenalized(uint256 penaltyAmount);
+
+    /// @notice Event emitted when a new verifier is set.
+    event VerifierSet(address verifier);
+
     /// @notice Starts an auction with the specified parameters.
     /// @dev Callable only by the owner and requires an ETH security deposit.
     /// @param params The struct containing auction initialization parameters.
