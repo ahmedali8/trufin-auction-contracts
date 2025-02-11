@@ -102,11 +102,6 @@ contract Auction is Ownable {
     }
 
     function submitMerkleData(IAuction.MerkleDataParams calldata params) external onlyOwner {
-        // state._checkAuctionIsInActive();
-        state._checkAuctionTime();
-
-        // state._checkAuctionStatusNotEnded();
-        state._checkStatus({ expected: Status.ACTIVE });
         state.submitMerkleData(params);
 
         emit MerkleRootSubmitted(params.merkleRoot, params.digest, params.hashFunction, params.size);

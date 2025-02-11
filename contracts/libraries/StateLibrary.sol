@@ -69,6 +69,14 @@ library StateLibrary {
     )
         internal
     {
+        if (block.timestamp < self.startTime) {
+            revert Errors.InvalidAuctionStatus(Status.INACTIVE, Status.ACTIVE);
+        }
+
+        if (block.timestamp <= self.endTime) {
+            revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.MERKLE_SUBMITTED);
+        }
+
         self.token.checkAddressZero();
 
         self._checkStatus({ expected: Status.ACTIVE });
@@ -176,6 +184,7 @@ library StateLibrary {
         if (block.timestamp < self.startTime) {
             revert Errors.InvalidAuctionStatus(Status.INACTIVE, Status.ACTIVE);
         }
+
         if (block.timestamp > self.endTime) {
             revert Errors.InvalidAuctionStatus(Status.ACTIVE, Status.ENDED);
         }

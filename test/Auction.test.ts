@@ -370,7 +370,6 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
   describe("#submitMerkleData", function () {
     let startTime = 0;
     let endTime = 0;
@@ -401,9 +400,9 @@ describe("Auction Tests", function () {
           hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
           size: MOCK_MULTI_HASH_IPFS.size,
         };
-        await expect(
-          auctionContract.connect(owner).submitMerkleData(merkleDataParams)
-        ).to.be.revertedWithCustomError(auctionContract, "AuctionActive");
+        await expect(auctionContract.connect(owner).submitMerkleData(merkleDataParams))
+          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
+          .withArgs(AuctionStatus.INACTIVE, AuctionStatus.ACTIVE);
       });
 
       it("should revert if its called during the auction", async function () {
@@ -411,14 +410,14 @@ describe("Auction Tests", function () {
         await advanceToAuctionStart(startTime);
 
         const merkleDataParams: IAuction.MerkleDataParamsStruct = {
-          merkleRoot: INVALID_MERKLE_ROOT,
+          merkleRoot: DUMMY_MERKLE_ROOT,
           digest: MOCK_MULTI_HASH_IPFS.digest,
           hashFunction: MOCK_MULTI_HASH_IPFS.hashFunction,
           size: MOCK_MULTI_HASH_IPFS.size,
         };
         await expect(
           auctionContract.connect(owner).submitMerkleData(merkleDataParams)
-        ).to.be.revertedWithCustomError(auctionContract, "AuctionActive");
+        ).to.be.revertedWithCustomError(auctionContract, "InvalidAuctionStatus");
       });
     });
 
@@ -473,9 +472,9 @@ describe("Auction Tests", function () {
         });
 
         it("should revert if merkle root is submitted twice", async function () {
-          await expect(
-            auctionContract.submitMerkleData(merkleDataParams)
-          ).to.be.revertedWithCustomError(auctionContract, "AuctionInActive");
+          await expect(auctionContract.submitMerkleData(merkleDataParams))
+            .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
+            .withArgs(AuctionStatus.ACTIVE, AuctionStatus.MERKLE_SUBMITTED);
         });
 
         it("should submit the merkle root and ipfs hash successfully", async function () {
@@ -488,7 +487,6 @@ describe("Auction Tests", function () {
       });
     });
   });
-  */
 
   /*
   describe("#endAuction", function () {
