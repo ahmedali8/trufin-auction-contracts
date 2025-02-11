@@ -531,7 +531,6 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
   describe("#claim", function () {
     const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
 
@@ -585,10 +584,9 @@ describe("Auction Tests", function () {
         proof: INVALID_PROOF,
       };
 
-      await expect(auctionContract.connect(alice).claim(claimParams)).to.be.revertedWithCustomError(
-        auctionContract,
-        "AuctionNotEnded"
-      );
+      await expect(auctionContract.connect(alice).claim(claimParams))
+        .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
+        .withArgs(AuctionStatus.ENDED, AuctionStatus.MERKLE_SUBMITTED);
     });
 
     context("when auction is finished", function () {
@@ -612,7 +610,7 @@ describe("Auction Tests", function () {
 
           await expect(
             auctionContract.connect(alice).claim(claimParams)
-          ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
+          ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.BidDoesNotExist);
         });
 
         it("should revert if tokens are already claimed", async function () {
@@ -630,7 +628,7 @@ describe("Auction Tests", function () {
           // Try to claim tokens again
           await expect(
             auctionContract.connect(alice).claim(claimParams)
-          ).to.be.revertedWithCustomError(auctionContract, "BidDoesNotExist");
+          ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.BidDoesNotExist);
         });
 
         it("should revert when winner tries to claim eth", async function () {
@@ -644,9 +642,9 @@ describe("Auction Tests", function () {
           };
 
           // This would fail with `InvalidMerkleProof()` as the given quantity is not correct and won't be verified
-          await expect(
-            auctionContract.connect(alice).claim(claimParams)
-          ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleProof");
+          await expect(auctionContract.connect(alice).claim(claimParams))
+            .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidMerkleProof)
+            .withArgs(proofs[alice.address]);
         });
 
         it("should revert when non-winner tries to claim tokens", async function () {
@@ -661,9 +659,9 @@ describe("Auction Tests", function () {
           };
 
           // This would fail with `InvalidMerkleProof()` as the given quantity is not correct and won't be verified
-          await expect(
-            auctionContract.connect(caller).claim(claimParams)
-          ).to.be.revertedWithCustomError(auctionContract, "InvalidMerkleProof");
+          await expect(auctionContract.connect(caller).claim(claimParams))
+            .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidMerkleProof)
+            .withArgs(proofs[caller.address]);
         });
       });
 
@@ -718,7 +716,6 @@ describe("Auction Tests", function () {
       });
     });
   });
- */
 
   /*
   describe("#slash", function () {
