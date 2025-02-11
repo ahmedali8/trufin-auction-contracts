@@ -2,7 +2,8 @@
 pragma solidity ^0.8.23;
 
 enum Status {
-    STARTED,
+    INACTIVE,
+    ACTIVE,
     MERKLE_SUBMITTED,
     ENDED
 }
