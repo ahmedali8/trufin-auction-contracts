@@ -2,35 +2,39 @@
 
 pragma solidity ^0.8.22;
 
+import { Status } from "../types/DataTypes.sol";
+
 /// @title Errors
 /// @notice Library to manage error messages for the LaunchpadV3 contracts.
 library Errors {
-    error AddressZero();
+    // Generic Errors
+    error InvalidAddress(address addr);
+    error ZeroTotalTokens();
+
+    // Auction Errors
+    error InvalidAuctionStatus(Status expected, Status current);
+    error AuctionExists();
     error CanOnlySubmitOnce();
-    error AuctionAlreadyExists();
-    error InvalidAuctionTime();
-    error InvalidTokenAddress();
-    error InvalidTotalTokens();
-    error AuctionNotActive();
+    error InvalidSecurityDeposit();
+    error InvalidPricePerToken();
+    error InvalidAuctionTimeParams(uint40 startTime, uint40 endTime);
+
+    // Bidding Errors
     error InvalidBidQuantity();
     error InvalidBidPrice();
-    error OwnerCannotPlaceABid();
-    error AuctionStillActive();
-    error AuctionAlreadyFinalized();
-    error InvalidIPFSHash();
-    error InvalidMerkleRoot();
-    error AuctionNotFinalized();
     error BidDoesNotExist();
-    error TokensAlreadyClaimed();
-    error InvalidProof();
-    error EthTransferFailed();
-    error ZeroAddress();
-    error InvalidSecurityDeposit();
+    error OwnerCannotPlaceBids();
+
+    // Merkle & Hash Errors
+    error InvalidMerkleRoot(bytes32 merkleRoot);
+    error InvalidMerkleProof(bytes32[] proof);
+    error InvalidMultiHash(bytes32 digest, uint8 hashFunction, uint8 size);
+
+    // Verification & Slashing
     error VerificationPeriodNotOver();
-    error OnlyVerifierCanResolveDispute();
-    error AuctionMustHaveAnInitialMerkleRoot();
     error VerificationWindowExpired();
-    error InvalidPricePerToken();
-    error InvalidMultiHash();
-    error InvalidAuctionStatus();
+    error OnlyVerifierCanResolveDispute();
+
+    // ETH & Token Transfers
+    error EthTransferFailed();
 }
