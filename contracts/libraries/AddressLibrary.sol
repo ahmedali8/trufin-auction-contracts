@@ -19,7 +19,7 @@ library AddressLibrary {
     /// @param addr The address to check.
     function checkAddressZero(address addr) internal pure {
         if (isAddressZero(addr)) {
-            revert Errors.AddressZero();
+            revert Errors.InvalidAddress(addr);
         }
     }
 

@@ -16,10 +16,4 @@ library MultiHashLibrary {
     {
         return digest != bytes32(0) && hashFunction > 0 && size > 0;
     }
-
-    function checkMultiHash(bytes32 digest) internal pure {
-        if (digest == bytes32(0)) {
-            revert InvalidMultiHash();
-        }
-    }
 }
