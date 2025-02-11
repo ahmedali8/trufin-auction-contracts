@@ -10,6 +10,7 @@ import { MultiHashLibrary } from "./libraries/MultiHashLibrary.sol";
 import { MerkleRootLibrary } from "./libraries/MerkleRootLibrary.sol";
 import { StateLibrary } from "./libraries/StateLibrary.sol";
 import { IAuction } from "./interfaces/IAuction.sol";
+import { Constants } from "./libraries/Constants.sol";
 import "hardhat/console.sol";
 
 contract Auction is Ownable {
@@ -18,9 +19,9 @@ contract Auction is Ownable {
     using MerkleRootLibrary for bytes32;
     using StateLibrary for State;
 
-    uint256 public constant VERIFICATION_WINDOW = 2 hours; // 2-hour window
-    uint256 public constant SECURITY_DEPOSIT = 0.5 ether; // Penalty to prevent fraud
-    uint256 public constant MIN_BID_PRICE_PER_TOKEN = StateLibrary.MIN_BID_PRICE_PER_TOKEN;
+    uint256 public constant VERIFICATION_WINDOW = Constants.VERIFICATION_WINDOW;
+    uint256 public constant SECURITY_DEPOSIT = Constants.SECURITY_DEPOSIT;
+    uint256 public constant MIN_BID_PRICE_PER_TOKEN = Constants.MIN_BID_PRICE_PER_TOKEN;
 
     address public verifier; // Trusted verifier (DAO, multisig, or Chainlink OCR)
     State public state;
@@ -54,7 +55,7 @@ contract Auction is Ownable {
 
     event AuctionStarted(address token, uint128 totalTokens, uint40 startTime, uint40 endTime);
     event BidPlaced(uint256 indexed bidId, address bidder, uint128 quantity, uint128 pricePerToken);
-    event MerkleRootSubmitted(bytes32 merkleRoot, string ipfsHash);
+    event MerkleRootSubmitted(bytes32 merkleRoot, bytes32 digest, uint8 hashFunction, uint8 size);
     event AuctionFinalized(address caller);
     event TokensClaimed(address bidder, uint256 quantity);
     event ETHClaimed(address bidder, uint256 amount);
@@ -139,41 +140,18 @@ contract Auction is Ownable {
         price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
     }
 
-    /*
-
-    struct SubmitMerkleDataParams {
-        bytes32 merkleRoot;
-        // MultiHash
-        bytes32 digest;
-        uint8 hashFunction;
-        uint8 size;
-    }
-
-    function submitMerkleRoot(SubmitMerkleDataParams calldata params)
+    function submitMerkleData(IAuction.SubmitMerkleDataParams calldata params)
         external
         onlyOwner
         onlyAfterAuction
         isNotFinalized
     {
-        if (auction.merkleRoot.isMerkleRootValid()) {
-            revert InvalidMerkleRoot(); // Auctioneer can only submit once
-        }
+        state.submitMerkleData(params);
 
-        if (!params.merkleRoot.isMerkleRootValid()) {
-            revert InvalidMerkleRoot();
-        }
-
-        if (!params.digest.isMultiHashValid()) {
-            revert InvalidIPFSHash();
-        }
-
-        auction.merkleRoot = params.merkleRoot;
-        auction.ipfsHash = params.ipfsHash;
-        auction.verificationDeadline = block.timestamp + VERIFICATION_WINDOW; // Set deadline
-
-        // emit MerkleRootSubmitted(merkleRoot, ipfsHash);
+        emit MerkleRootSubmitted(params.merkleRoot, params.digest, params.hashFunction, params.size);
     }
 
+    /*
 
     // there would be a window between the call of submitMerkleRoot and endAuction that would act as
     // the dispute period for the auction set to 2 hours

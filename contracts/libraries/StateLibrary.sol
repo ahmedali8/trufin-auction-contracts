@@ -4,13 +4,18 @@ pragma solidity ^0.8.22;
 import { State, Status, Bid } from "../types/DataTypes.sol";
 import { Errors } from "./Errors.sol";
 import { AddressLibrary } from "./AddressLibrary.sol";
+import { MultiHashLibrary } from "./MultiHashLibrary.sol";
+import { MerkleRootLibrary } from "./MerkleRootLibrary.sol";
 import { IAuction } from "../interfaces/IAuction.sol";
+import { Constants } from "./Constants.sol";
+
+import { console } from "hardhat/console.sol";
 
 library StateLibrary {
-    using AddressLibrary for address;
     using StateLibrary for State;
-
-    uint256 internal constant MIN_BID_PRICE_PER_TOKEN = 1e15; // 0.001 ETH
+    using AddressLibrary for address;
+    using MultiHashLibrary for bytes32;
+    using MerkleRootLibrary for bytes32;
 
     function startAuction(State storage self, IAuction.StartAuctionParams memory params) internal {
         if (!self.token.isAddressZero()) revert Errors.AuctionAlreadyExists();
@@ -46,9 +51,40 @@ library StateLibrary {
         if (self.status != Status.STARTED) revert Errors.AuctionNotActive();
         bidder.checkAddressZero();
         if (quantity == 0) revert Errors.InvalidBidQuantity();
-        if (pricePerToken < MIN_BID_PRICE_PER_TOKEN) revert Errors.InvalidPricePerToken();
+        if (pricePerToken < Constants.MIN_BID_PRICE_PER_TOKEN) revert Errors.InvalidPricePerToken();
 
         // Store the bid
         bids[nextBidId] = Bid({ bidder: bidder, quantity: quantity, pricePerToken: pricePerToken });
+    }
+
+    function submitMerkleData(
+        State storage self,
+        IAuction.SubmitMerkleDataParams memory params
+    )
+        internal
+    {
+        if (self.status != Status.STARTED) {
+            revert Errors.AuctionNotActive();
+        }
+
+        if (!params.merkleRoot.isMerkleRootValid()) {
+            revert Errors.InvalidMerkleRoot();
+        }
+
+        if (!params.digest.isMultiHashValid(params.hashFunction, params.size)) {
+            revert Errors.InvalidMultiHash();
+        }
+
+        if (self.merkleRoot.isMerkleRootValid()) {
+            revert Errors.CanOnlySubmitOnce();
+        }
+
+        // Update state
+        self.merkleRoot = params.merkleRoot;
+        self.digest = params.digest;
+        self.hashFunction = params.hashFunction;
+        self.size = params.size;
+        self.verificationDeadline = uint40(block.timestamp + Constants.VERIFICATION_WINDOW);
+        self.status = Status.MERKLE_SUBMITTED;
     }
 }
