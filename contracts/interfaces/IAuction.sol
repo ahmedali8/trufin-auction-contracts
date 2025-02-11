@@ -8,4 +8,12 @@ interface IAuction {
         uint40 endTime;
         address token;
     }
+
+    struct SubmitMerkleDataParams {
+        bytes32 merkleRoot;
+        // MultiHash
+        bytes32 digest;
+        uint8 hashFunction;
+        uint8 size;
+    }
 }
