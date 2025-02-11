@@ -2,17 +2,15 @@
 
 pragma solidity ^0.8.22;
 
-import { AuctionState } from "../types/DataTypes.sol";
-
 library MerkleRootLibrary {
     error InvalidMerkleRoot();
 
-    function isMerkleRootValid(AuctionState memory auctionState) internal pure returns (bool) {
-        return auctionState.merkleRoot != bytes32(0);
+    function isMerkleRootValid(bytes32 merkleRoot) internal pure returns (bool) {
+        return merkleRoot != bytes32(0);
     }
 
-    function checkMerkleRoot(AuctionState memory auctionState) internal pure {
-        if (auctionState.merkleRoot == bytes32(0)) {
+    function checkMerkleRoot(bytes32 merkleRoot) internal pure {
+        if (merkleRoot == bytes32(0)) {
             revert InvalidMerkleRoot();
         }
     }

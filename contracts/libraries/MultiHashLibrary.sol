@@ -2,22 +2,23 @@
 
 pragma solidity ^0.8.22;
 
-import { AuctionState } from "../types/DataTypes.sol";
-
 library MultiHashLibrary {
     error InvalidMultiHash();
 
-    /// @notice Checks if a MultiHash is valid (i.e., digest is not zero).
-    /// @param auctionState The MultiHash struct to check.
-    /// @return isValid Boolean indicating whether the MultiHash is valid.
-    function isMultiHashValid(AuctionState memory auctionState) internal pure returns (bool) {
-        return auctionState.digest != bytes32(0);
+    function isMultiHashValid(
+        bytes32 digest,
+        uint8 hashFunction,
+        uint8 size
+    )
+        internal
+        pure
+        returns (bool)
+    {
+        return digest != bytes32(0) && hashFunction > 0 && size > 0;
     }
 
-    /// @notice Ensures a MultiHash is valid, otherwise reverts.
-    /// @param auctionState The MultiHash struct to check.
-    function checkMultiHash(AuctionState memory auctionState) internal pure {
-        if (auctionState.digest == bytes32(0)) {
+    function checkMultiHash(bytes32 digest) internal pure {
+        if (digest == bytes32(0)) {
             revert InvalidMultiHash();
         }
     }
