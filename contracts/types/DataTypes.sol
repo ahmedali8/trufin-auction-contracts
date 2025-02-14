@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 /// @title Auction Status Enum
 /// @notice Represents the different states an auction can be in.
 /// @dev Used in the `State` struct to track the auction's lifecycle.
 enum Status {
     /// @notice The auction has not started yet.
-    INACTIVE,
+    NOT_STARTED,
     /// @notice The auction is currently active and accepting bids.
-    ACTIVE,
-    /// @notice The auction has ended, and the Merkle root has been submitted for verification.
-    MERKLE_SUBMITTED,
+    STARTED,
     /// @notice The auction has been finalized, and no further actions can be taken.
     ENDED
 }
@@ -19,40 +19,16 @@ enum Status {
 /// @notice Stores the current state of an auction.
 /// @dev This struct is stored in storage and used to track auction progress.
 struct State {
-    // ---------------- SLOT 0 ----------------
-    /// @notice The current status of the auction (INACTIVE, ACTIVE, MERKLE_SUBMITTED, ENDED).
-    Status status; // 1 byte
-    /// @notice The timestamp when the auction starts.
-    /// @dev Stored as a 40-bit integer to save storage space.
-    uint40 startTime; // 5 bytes
-    /// @notice The timestamp when the auction ends.
-    /// @dev Must be greater than `startTime`.
-    uint40 endTime; // 5 bytes
-    /// @notice The total number of tokens available in the auction.
-    uint128 totalTokens; // 16 bytes
-    /// @notice The timestamp when the verification period for Merkle root submission ends.
-    /// @dev This is set when the Merkle root is submitted.
-    uint40 verificationDeadline; // 5 bytes
-    // ---------------- SLOT 1 ----------------
-    /// @notice The ERC20 token being auctioned.
-    /// @dev This address should be a valid ERC20 token contract.
-    address token; // 20 bytes
-    /// @notice Flag indicating if the auction owner has been penalized for fraud.
-    bool isOwnerSlashed; // 1 byte
-    /// @notice The hash function used for Merkle root verification.
-    /// @dev Follows the MultiHash standard.
-    uint8 hashFunction; // 1 byte
-    /// @notice The size of the Merkle digest output.
-    /// @dev Ensures correct parsing of Merkle proofs.
-    uint8 size; // 1 byte
-    // ---------------- SLOT 2 ----------------
-    /// @notice The digest of the Merkle tree, used for verifying auction results.
-    /// @dev The digest is generated from the auction's bid data.
-    bytes32 digest; // 32 bytes
-    // ---------------- SLOT 3 ----------------
-    /// @notice The Merkle root representing the valid winning bids.
-    /// @dev Submitted after auction ends for verification.
-    bytes32 merkleRoot; // 32 bytes
+    // Storage slot 0
+    address topBidder; // Highest priority bidder (doubly linked list head)
+    address lastBidder; // Last bidder in the linked list (doubly linked list tail)
+    // Storage slot 1
+    uint128 totalBidCount; // Total number of bids placed
+    uint128 totalTokensForSale; // Total tokens available for auction
+    // Storage slot 2
+    IERC20 token; // ERC20 token being auctioned
+    uint40 endTime; // Auction end time (5 bytes)
+    Status status; // Current auction status (1 byte)
 }
 
 /// @title Auction Bid Struct
@@ -68,4 +44,9 @@ struct Bid {
     /// @notice The address of the bidder.
     /// @dev This address is used for refunds and token distribution.
     address bidder; // 20 bytes
+    uint40 timestamp; // 5 bytes
+    bool filled; // 1 byte
+    // ---------------- SLOT 2 ----------------
+    address prev; // 20 bytes
+    address next; // 20 bytes
 }
