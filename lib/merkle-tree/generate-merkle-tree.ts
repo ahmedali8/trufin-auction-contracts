@@ -2,14 +2,15 @@ import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 
 /**
  * @notice Generates a Merkle tree from bid data.
- * @param bids - Array of bids [{ bidder: string, quantity: bigint }]
+ * @param bids - Array of bids [{ bidder: string, serial: bigint, quantity: bigint }]
  * @returns An object containing the Merkle root and proofs.
  */
-export function generateMerkleTree(bids: { bidder: string; quantity: bigint }[]) {
-  const leaves = bids.map((bid) => [bid.bidder, bid.quantity.toString()]);
+export function generateMerkleTree(bids: { bidder: string; serial: bigint; quantity: bigint }[]) {
+  const leaves = bids.map((bid) => [bid.bidder, bid.serial.toString(), bid.quantity.toString()]);
 
   // Create the Merkle Tree
-  const tree = StandardMerkleTree.of(leaves, ["address", "uint256"]);
+  //                                           bidder     serial     quantity
+  const tree = StandardMerkleTree.of(leaves, ["address", "uint128", "uint128"]);
 
   // Generate proofs for each bid
   const proofs: Record<string, string[]> = {};

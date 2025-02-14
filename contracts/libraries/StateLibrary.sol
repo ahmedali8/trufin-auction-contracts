@@ -155,6 +155,7 @@ library StateLibrary {
         mapping(uint256 => Bid) storage bids,
         IAuction.ClaimParams memory params,
         Bid memory currentBid,
+        uint128 nextBidderSerial,
         address caller
     )
         internal
@@ -166,9 +167,16 @@ library StateLibrary {
         }
 
         // Verify the Merkle proof to prevent false claims
-        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(caller, params.quantity))));
+        bytes32 _leaf = keccak256(
+            bytes.concat(keccak256(abi.encode(caller, params.bidderSerial, params.quantity)))
+        );
+
         if (!MerkleProof.verify(params.proof, self.merkleRoot, _leaf)) {
             revert Errors.InvalidMerkleProof(params.proof);
+        }
+
+        if (params.bidderSerial >= nextBidderSerial) {
+            revert Errors.InvalidBidderClaim();
         }
 
         // Remove the bid from storage after successful validation

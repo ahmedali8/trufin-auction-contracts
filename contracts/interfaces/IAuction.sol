@@ -37,10 +37,12 @@ interface IAuction {
     /// @dev Used to validate bid claims against the Merkle tree.
     /// @param bidId The unique identifier of the bid.
     /// @param quantity The quantity of tokens won in the auction.
+    /// @param bidderSerial The serial number of bidder in the merkle tree.
     /// @param proof The Merkle proof verifying the claim.
     struct ClaimParams {
         uint256 bidId;
         uint128 quantity;
+        uint128 bidderSerial;
         bytes32[] proof;
     }
 

@@ -19,6 +19,7 @@ export enum AuctionErrors {
   InvalidBidPrice = "InvalidBidPrice",
   BidDoesNotExist = "BidDoesNotExist",
   OwnerCannotPlaceBids = "OwnerCannotPlaceBids",
+  InvalidBidderClaim = "InvalidBidderClaim",
   InvalidMerkleRoot = "InvalidMerkleRoot",
   InvalidMerkleProof = "InvalidMerkleProof",
   InvalidMultiHash = "InvalidMultiHash",

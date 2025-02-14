@@ -44,6 +44,9 @@ contract Auction is IAuction, Ownable {
     /// resolution.
     address public immutable VERIFIER;
 
+    /// @notice The track of the next bidder that can claim the tokens or eth
+    uint128 public nextBidderSerial = 1;
+
     /// @notice The state of the auction, including status, token, and timing information.
     State public state;
 
@@ -129,7 +132,10 @@ contract Auction is IAuction, Ownable {
     function claim(IAuction.ClaimParams calldata params) external override {
         Bid memory _bid = bids[params.bidId];
 
-        state.claim(bids, params, _bid, _msgSender());
+        state.claim(bids, params, _bid, nextBidderSerial, _msgSender());
+
+        // Update the serial
+        nextBidderSerial++;
 
         if (params.quantity == 0) {
             // Non-Winning bidder: Refund ETH

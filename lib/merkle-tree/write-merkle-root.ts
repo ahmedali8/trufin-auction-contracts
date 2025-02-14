@@ -5,7 +5,9 @@ import { generateMerkleTree } from "./generate-merkle-tree";
 
 interface Bid {
   bidder: string;
-  quantity: string; // Stored as string to avoid BigInt JSON issues
+  // Stored as string to avoid BigInt JSON issues
+  serial: string;
+  quantity: string;
 }
 
 // Load bids from a JSON file
@@ -14,8 +16,9 @@ const bidData: Bid[] = JSON.parse(
 ) as Bid[];
 
 // Convert `quantity` from string to `BigInt`
-const parsedBids = bidData.map((bid: { bidder: string; quantity: string }) => ({
+const parsedBids = bidData.map((bid: { bidder: string; serial: string; quantity: string }) => ({
   bidder: bid.bidder,
+  serial: BigInt(bid.serial),
   quantity: BigInt(bid.quantity),
 }));
 

@@ -57,6 +57,9 @@ library Errors {
     /// @notice Error when the owner attempts to place a bid.
     error OwnerCannotPlaceBids();
 
+    /// @notice Error when an unordered bidder tries to claim before a winner/non-winner.
+    error InvalidBidderClaim();
+
     // ---------------- MERKLE & HASH ERRORS ----------------
 
     /// @notice Error when an invalid Merkle root is provided.
