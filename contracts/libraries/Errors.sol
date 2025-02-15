@@ -31,6 +31,8 @@ library Errors {
 
     error AuctionEnded();
 
+    error ZeroDuration();
+
     /// @notice Error when trying to submit Merkle data more than once.
     error CanOnlySubmitOnce();
 
