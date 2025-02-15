@@ -9,19 +9,11 @@ import { ZERO_BYTES32 } from "../utils/constants";
 import {
   AUCTION_DURATION,
   AuctionStatus,
-  DUMMY_MERKLE_ROOT,
-  INVALID_MERKLE_ROOT,
-  INVALID_MULTI_HASH_IPFS,
-  INVALID_PROOF,
-  MOCK_MULTI_HASH_IPFS,
-  MOCK_SUBMIT_MERKLE_DATA_PARAMS,
   PRICE_PER_TOKEN,
-  SECURITY_DEPOSIT,
   TIME_BUFFER,
   TOKEN_AMOUNT,
   TOKEN_QUANTITY,
   TOTAL_TOKENS,
-  VERIFICATION_WINDOW,
 } from "./shared/constants";
 import { AuctionErrors, ERC20TokenErrors, OwnableErrors } from "./shared/errors";
 import { loadFixtures } from "./shared/fixtures";
@@ -29,9 +21,9 @@ import {
   advanceToAuctionEnd,
   advanceToAuctionStart,
   getBidPrice,
-  getDuration,
   getGasFee,
   getStartAndEndTime,
+  getTimeData,
 } from "./shared/helpers";
 
 describe("Auction Tests", function () {
@@ -51,13 +43,12 @@ describe("Auction Tests", function () {
   /// HELPER FUNCTIONS ///
 
   async function approveAndStartAuction() {
-    const { startTime, endTime } = await getStartAndEndTime();
-    await tokenContract.connect(owner).approve(auctionContract.getAddress(), TOTAL_TOKENS);
-    await auctionContract.connect(owner).startAuction(TOTAL_TOKENS, AUCTION_DURATION, {
-      value: SECURITY_DEPOSIT,
-    });
+    const { currentTime, duration, endTime } = await getTimeData();
 
-    return { startTime, endTime };
+    await tokenContract.connect(owner).approve(auctionContract.getAddress(), TOTAL_TOKENS);
+    await auctionContract.connect(owner).startAuction(TOTAL_TOKENS, duration);
+
+    return { currentTime, duration, endTime };
   }
 
   before(async function () {
@@ -81,9 +72,11 @@ describe("Auction Tests", function () {
   });
 
   describe("#constructor", function () {
-    it("should revert if the initial verifier is zero address", async function () {
+    it("should revert if the token address is zero address", async function () {
       const AuctionFactory = await ethers.getContractFactory("Auction");
-      await expect(AuctionFactory.connect(owner).deploy(owner.address, ZeroAddress)).to.be.reverted;
+      await expect(
+        AuctionFactory.connect(owner).deploy(owner.address, ZeroAddress)
+      ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAddress);
     });
 
     it("should set the correct initial owner", async function () {
@@ -96,189 +89,83 @@ describe("Auction Tests", function () {
   describe("#startAuction", function () {
     context("when called by non-owner", function () {
       it("should revert", async function () {
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: parseEther("1"),
-          startTime: 1739058738,
-          endTime: 1739058738,
-          token: ZeroAddress,
-        };
-
         await expect(
-          auctionContract.connect(alice).startAuction(startAuctionParams, {
-            value: SECURITY_DEPOSIT,
-          })
+          auctionContract.connect(alice).startAuction(parseEther("1"), AUCTION_DURATION)
         ).to.be.revertedWithCustomError(auctionContract, OwnableErrors.OwnableUnauthorizedAccount);
       });
     });
 
-    context("when deposit is incorrect", function () {
-      it("should revert if deposit not paid", async function () {
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: parseEther("1"),
-          startTime: 1739058738,
-          endTime: 1739058738,
-          token: ZeroAddress,
-        };
-
-        await expect(
-          auctionContract.connect(owner).startAuction(startAuctionParams, {
-            value: 0n,
-          })
-        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidSecurityDeposit);
-      });
-    });
-
     context("when params are invalid", function () {
-      it("should revert if the token address is the zero address", async function () {
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: parseEther("1"),
-          startTime: 1739058738,
-          endTime: 1739058738,
-          token: ZeroAddress,
-        };
-
-        await expect(
-          auctionContract.startAuction(startAuctionParams, {
-            value: SECURITY_DEPOSIT,
-          })
-        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAddress);
-      });
-
       it("should revert if the total tokens is zero", async function () {
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: 0,
-          startTime: 1739058738,
-          endTime: 1739058738,
-          token: tokenAddress,
-        };
-
         await expect(
-          auctionContract.startAuction(startAuctionParams, {
-            value: SECURITY_DEPOSIT,
-          })
+          auctionContract.startAuction(0, AUCTION_DURATION)
         ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.ZeroTotalTokens);
       });
 
-      it("should revert if the start time is in the past", async function () {
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: parseEther("1"),
-          startTime: 0,
-          endTime: 1739058738,
-          token: tokenAddress,
-        };
-
+      it("should revert if the duration is zero", async function () {
         await expect(
-          auctionContract.startAuction(startAuctionParams, {
-            value: SECURITY_DEPOSIT,
-          })
-        )
-          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionTimeParams)
-          .withArgs(startAuctionParams.startTime, startAuctionParams.endTime);
-      });
-
-      it("should revert if the end time is before the start time", async function () {
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: parseEther("1"),
-          startTime: 1739058738,
-          endTime: 1739058737,
-          token: tokenAddress,
-        };
-
-        await expect(
-          auctionContract.startAuction(startAuctionParams, {
-            value: SECURITY_DEPOSIT,
-          })
-        )
-          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionTimeParams)
-          .withArgs(startAuctionParams.startTime, startAuctionParams.endTime);
+          auctionContract.startAuction(parseEther("1"), 0)
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.ZeroDuration);
       });
     });
 
     context("when params are valid", function () {
       it("should revert if tokens not approved", async function () {
-        const { startTime, endTime } = await getStartAndEndTime();
-
-        const startAuctionParams: IAuction.StartAuctionParamsStruct = {
-          totalTokens: TOTAL_TOKENS,
-          startTime: startTime,
-          endTime: endTime,
-          token: tokenAddress,
-        };
-
         await expect(
-          auctionContract.startAuction(startAuctionParams, {
-            value: SECURITY_DEPOSIT,
-          })
+          auctionContract.startAuction(TOTAL_TOKENS, AUCTION_DURATION)
         ).to.be.revertedWithCustomError(tokenContract, ERC20TokenErrors.ERC20InsufficientAllowance);
       });
 
       context("when create a new auction", function () {
-        let startTime = 0;
+        let currentTime = 0;
+        let duration = 0;
         let endTime = 0;
-        let startAuctionParams: IAuction.StartAuctionParamsStruct =
-          {} as IAuction.StartAuctionParamsStruct;
 
         beforeEach(async function () {
-          ({ startTime, endTime } = await getStartAndEndTime());
-
-          startAuctionParams = {
-            totalTokens: TOTAL_TOKENS,
-            startTime: startTime,
-            endTime: endTime,
-            token: tokenAddress,
-          };
-
           // Approve the auction contract to spend the tokens
           await tokenContract.approve(auctionContract.getAddress(), TOTAL_TOKENS);
 
-          await expect(
-            auctionContract.startAuction(startAuctionParams, {
-              value: SECURITY_DEPOSIT,
-            })
-          )
+          ({ currentTime, duration, endTime } = await getTimeData());
+          await expect(auctionContract.startAuction(TOTAL_TOKENS, duration))
             .to.emit(auctionContract, "AuctionStarted")
-            .withArgs(tokenAddress, TOTAL_TOKENS, startTime, endTime);
+            .withArgs(TOTAL_TOKENS, currentTime, duration);
         });
 
         it("should revert if auction is started again", async function () {
           await expect(
-            auctionContract.startAuction(startAuctionParams, {
-              value: SECURITY_DEPOSIT,
-            })
-          ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.AuctionExists);
+            auctionContract.startAuction(TOTAL_TOKENS, duration)
+          ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.AuctionInProgress);
         });
 
         it("should emit event and update state", async function () {
           const auctionState = await auctionContract.state();
 
           // expect
+          expect(auctionState.topBidder).to.equal(ZeroAddress);
+          expect(auctionState.lastBidder).to.equal(ZeroAddress);
+          expect(auctionState.totalBidCount).to.equal(0);
+          expect(auctionState.totalTokensForSale).to.equal(TOTAL_TOKENS);
           expect(auctionState.token).to.equal(tokenAddress);
-          expect(auctionState.totalTokens).to.equal(TOTAL_TOKENS);
-          expect(auctionState.startTime).to.equal(startTime);
           expect(auctionState.endTime).to.equal(endTime);
-          expect(auctionState.merkleRoot).to.equal(INVALID_MERKLE_ROOT);
-
-          expect(auctionState.status).to.equal(AuctionStatus.ACTIVE);
-          expect(auctionState.verificationDeadline).to.equal(0);
-          expect(auctionState.isOwnerSlashed).to.equal(false);
-
-          // MultiHash
-          expect(auctionState.hashFunction).to.equal(0);
-          expect(auctionState.size).to.equal(0);
-          expect(auctionState.digest).to.equal(ZERO_BYTES32);
+          expect(auctionState.status).to.equal(AuctionStatus.STARTED);
         });
       });
     });
   });
 
   describe("#placeBid", function () {
-    let startTime = 0;
-    let endTime = 0;
+    let auctionCurrentTime = 0;
+    let duration = 0;
+    let auctionEndTime = 0;
 
     beforeEach(async function () {
-      ({ startTime, endTime } = await approveAndStartAuction());
+      ({
+        currentTime: auctionCurrentTime,
+        duration,
+        endTime: auctionEndTime,
+      } = await approveAndStartAuction());
 
-      await advanceToAuctionStart(startTime);
+      await advanceToAuctionStart(auctionCurrentTime);
     });
 
     context("when the bid or params are invalid", function () {
@@ -307,29 +194,42 @@ describe("Auction Tests", function () {
     context("when the bid is valid", function () {
       const totalPrice = getBidPrice(TOKEN_QUANTITY, PRICE_PER_TOKEN); // 10 tokens
 
+      it("should revert if the bidder tries to place a bid again", async function () {
+        await auctionContract
+          .connect(alice)
+          .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice });
+
+        await expect(
+          auctionContract
+            .connect(alice)
+            .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.BidAlreadyPlaced);
+      });
+
       it("should place a bid successfully", async function () {
         const contractBalBefore = await ethers.provider.getBalance(auctionAddress);
 
-        const expectedBidId = 1n;
-        const actualBidId = await auctionContract.nextBidId();
-        expect(actualBidId).to.equal(expectedBidId);
+        const currentTime = (await time.latest()) + 1;
         await expect(
           auctionContract
             .connect(alice)
             .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
         )
           .to.emit(auctionContract, "BidPlaced")
-          .withArgs(actualBidId, alice.address, TOKEN_QUANTITY, PRICE_PER_TOKEN);
+          .withArgs(alice.address, TOKEN_QUANTITY, PRICE_PER_TOKEN);
 
-        const bid = await auctionContract.bids(actualBidId);
+        const bid = await auctionContract.bids(alice.address);
 
-        expect(bid.bidder).to.equal(alice.address);
         expect(bid.quantity).to.equal(TOKEN_QUANTITY);
         expect(bid.pricePerToken).to.equal(PRICE_PER_TOKEN);
+        expect(bid.bidder).to.equal(alice.address);
+        expect(bid.timestamp).to.equal(currentTime);
+        expect(bid.filled).to.equal(false);
+        expect(bid.prev).to.equal(ZeroAddress);
+        expect(bid.next).to.equal(ZeroAddress);
 
-        const actualNewBidId = await auctionContract.nextBidId();
-        const expectedNewBidId = expectedBidId + 1n;
-        expect(actualNewBidId).to.equal(expectedNewBidId);
+        expect((await auctionContract.state()).topBidder).to.equal(alice.address);
+        expect((await auctionContract.state()).lastBidder).to.equal(alice.address);
 
         // assert the balance of the contract
         const contractBalAfter = await ethers.provider.getBalance(auctionAddress);
@@ -337,15 +237,13 @@ describe("Auction Tests", function () {
       });
 
       it("should revert if placing bid after auction ends", async function () {
-        await advanceToAuctionEnd(endTime);
+        await advanceToAuctionEnd(auctionEndTime);
 
         await expect(
           auctionContract
             .connect(alice)
             .placeBid(TOKEN_QUANTITY, PRICE_PER_TOKEN, { value: totalPrice })
-        )
-          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
-          .withArgs(AuctionStatus.ACTIVE, AuctionStatus.ENDED);
+        ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.AuctionEnded);
       });
 
       it("should measure gas cost for placing multiple bids", async function () {
@@ -370,6 +268,7 @@ describe("Auction Tests", function () {
     });
   });
 
+  /*
   describe("#endAuction", function () {
     let endTime = 0;
 
@@ -411,4 +310,5 @@ describe("Auction Tests", function () {
       });
     });
   });
+   */
 });

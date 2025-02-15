@@ -28,14 +28,22 @@ export async function getStartAndEndTime() {
   return { startTime, endTime };
 }
 
+export async function getTimeData() {
+  const currentTime = (await time.latest()) + 1;
+  const duration = AUCTION_DURATION;
+  const endTime = currentTime + duration;
+
+  return { currentTime, duration, endTime };
+}
+
 // gets the price
 export function getBidPrice(quantity: bigint, pricePerToken: bigint) {
   return (pricePerToken * quantity) / parseUnits("1", 18);
 }
 
 // Move time forward to the start of the auction
-export async function advanceToAuctionStart(startTime: number) {
-  await time.increaseTo(startTime + time.duration.seconds(TIME_BUFFER));
+export async function advanceToAuctionStart(currentTime: number) {
+  await time.increaseTo(currentTime + time.duration.seconds(TIME_BUFFER));
 }
 
 // Move time forward to the start of the auction

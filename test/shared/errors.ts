@@ -27,4 +27,8 @@ export enum AuctionErrors {
   VerificationWindowExpired = "VerificationWindowExpired",
   OnlyVerifierCanResolveDispute = "OnlyVerifierCanResolveDispute",
   EthTransferFailed = "EthTransferFailed",
+  ZeroDuration = "ZeroDuration",
+  AuctionInProgress = "AuctionInProgress",
+  AuctionEnded = "AuctionEnded",
+  BidAlreadyPlaced = "BidAlreadyPlaced",
 }
