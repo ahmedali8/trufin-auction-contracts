@@ -29,7 +29,7 @@ interface IAuction {
     /// - `params.totalTokens` must be greater than zero.
     */
 
-    function startAuction(uint128 totalTokens, uint40 duration) external payable;
+    function startAuction(uint128 totalTokens, uint40 duration) external;
 
     /// @notice Places a bid on the auction.
     /// @dev Requires ETH payment equal to `quantity * pricePerToken`.

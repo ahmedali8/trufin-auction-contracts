@@ -45,15 +45,7 @@ contract Auction is IAuction, Ownable {
     }
 
     /// @inheritdoc IAuction
-    function startAuction(
-        uint128 totalTokens,
-        uint40 duration
-    )
-        external
-        payable
-        override
-        onlyOwner
-    {
+    function startAuction(uint128 totalTokens, uint40 duration) external override onlyOwner {
         // state.startAuction(params);
 
         if (totalTokens == 0) {
@@ -219,6 +211,7 @@ contract Auction is IAuction, Ownable {
 
                 bid.filled = true;
             } else {
+                // Refund the non-winners
                 uint256 _refundAmount = getBidPrice(bid.quantity, bid.pricePerToken);
                 _currentBidder.sendValue(_refundAmount);
                 emit RefundIssued(_currentBidder, _refundAmount);
@@ -226,6 +219,9 @@ contract Auction is IAuction, Ownable {
 
             _currentBidder = bid.next;
         }
+
+        // Send remaining eth to the owner (i.e. the wining bidders' money)
+        owner().sendValue(address(this).balance);
 
         emit AuctionEnded();
     }

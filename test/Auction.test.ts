@@ -1,17 +1,16 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { ZeroAddress, parseEther, parseUnits, zeroPadBytes } from "ethers";
+import { ZeroAddress, formatEther, parseEther, parseUnits } from "ethers";
 import { ethers } from "hardhat";
+import { parse } from "path";
 
 import type { Auction, MockToken } from "../types";
-import { ZERO_BYTES32 } from "../utils/constants";
+import { token } from "../types/@openzeppelin/contracts";
 import {
   AUCTION_DURATION,
   AuctionStatus,
   PRICE_PER_TOKEN,
-  TIME_BUFFER,
-  TOKEN_AMOUNT,
   TOKEN_QUANTITY,
   TOTAL_TOKENS,
 } from "./shared/constants";
@@ -22,13 +21,13 @@ import {
   advanceToAuctionStart,
   getBidPrice,
   getGasFee,
-  getStartAndEndTime,
   getTimeData,
 } from "./shared/helpers";
+import { logState } from "./shared/loggers";
 
 describe("Auction Tests", function () {
   // signers
-  let signers: Record<string, string>;
+  let signerNames: Record<string, string>;
   let owner: SignerWithAddress;
   let alice: SignerWithAddress;
   let bob: SignerWithAddress;
@@ -52,9 +51,19 @@ describe("Auction Tests", function () {
     return { currentTime, duration, endTime };
   }
 
+  async function placeBid(bidder: SignerWithAddress, quantity: string, price: string) {
+    const gasFeeDelta = await getGasFee(
+      auctionContract.connect(bidder).placeBid(parseEther(quantity), parseEther(price), {
+        value: getBidPrice(parseEther(quantity), parseEther(price)),
+      })
+    );
+    await logState(signerNames, auctionContract, bidder);
+    return gasFeeDelta;
+  }
+
   before(async function () {
     [owner, alice, bob, eve, ...accounts] = await ethers.getSigners();
-    signers = {
+    signerNames = {
       [owner.address]: "owner",
       [alice.address]: "alice",
       [bob.address]: "bob",
@@ -73,7 +82,7 @@ describe("Auction Tests", function () {
 
     // Mint some tokens to the wallets
     const tokenAmount = parseEther("1000000");
-    await Promise.all([tokenContract.mint(owner.address, tokenAmount)]);
+    await tokenContract.mint(owner.address, tokenAmount);
   });
 
   describe("#constructor", function () {
@@ -160,15 +169,11 @@ describe("Auction Tests", function () {
 
   describe("#placeBid", function () {
     let auctionCurrentTime = 0;
-    let duration = 0;
     let auctionEndTime = 0;
 
     beforeEach(async function () {
-      ({
-        currentTime: auctionCurrentTime,
-        duration,
-        endTime: auctionEndTime,
-      } = await approveAndStartAuction());
+      ({ currentTime: auctionCurrentTime, endTime: auctionEndTime } =
+        await approveAndStartAuction());
 
       await advanceToAuctionStart(auctionCurrentTime);
     });
@@ -276,15 +281,11 @@ describe("Auction Tests", function () {
   describe("#endAuction", function () {
     const totalTokens = parseEther("70");
     let auctionCurrentTime = 0;
-    let duration = 0;
     let auctionEndTime = 0;
 
     beforeEach(async function () {
-      ({
-        currentTime: auctionCurrentTime,
-        duration,
-        endTime: auctionEndTime,
-      } = await approveAndStartAuction(totalTokens));
+      ({ currentTime: auctionCurrentTime, endTime: auctionEndTime } =
+        await approveAndStartAuction(totalTokens));
 
       await advanceToAuctionStart(auctionCurrentTime);
     });
@@ -299,113 +300,140 @@ describe("Auction Tests", function () {
     });
 
     context("when the auction is ended", function () {
+      const bidders: string[] = [];
+      let nonWinnerEthBalancesBefore: bigint[] = [];
+
       beforeEach(async function () {
+        nonWinnerEthBalancesBefore = await Promise.all([
+          await ethers.provider.getBalance(alice.address),
+          await ethers.provider.getBalance(accounts[1].address),
+        ]);
+
         // Place Bids //
 
-        // alice places bid with 10 tokens and 1 eth
-        console.log("alice", alice.address);
-        await auctionContract.connect(alice).placeBid(parseEther("10"), parseEther("1"), {
-          value: getBidPrice(parseEther("10"), parseEther("1")),
-        });
-        await logState(auctionContract, alice, "alice");
+        // alice places bid with 10 tokens and 1 eth (total 10 eth)
+        await placeBid(alice, "10", "1");
 
-        // bob places bid with 20 tokens and 2 eth
-        console.log("bob", bob.address);
-        await auctionContract.connect(bob).placeBid(parseEther("20"), parseEther("2"), {
-          value: getBidPrice(parseEther("20"), parseEther("2")),
-        });
-        await logState(auctionContract, bob, "bob");
+        // bob places bid with 20 tokens and 2 eth (total 40 eth)
+        await placeBid(bob, "20", "2");
 
-        // eve places bid with 30 tokens and 3 eth
-        console.log("eve", eve.address);
-        await auctionContract.connect(eve).placeBid(parseEther("30"), parseEther("3"), {
-          value: getBidPrice(parseEther("30"), parseEther("3")),
-        });
-        await logState(auctionContract, eve, "eve");
+        // eve places bid with 30 tokens and 3 eth (total 90 eth)
+        await placeBid(eve, "30", "3");
 
-        // accounts[0] places bid with 20 tokens and 3 eth
-        console.log("accounts[0]", accounts[0].address);
-        await auctionContract.connect(accounts[0]).placeBid(parseEther("20"), parseEther("3"), {
-          value: getBidPrice(parseEther("20"), parseEther("3")),
-        });
-        await logState(auctionContract, accounts[0], "accounts[0]");
+        // accounts[0] places bid with 20 tokens and 3 eth (total 60 eth)
+        await placeBid(accounts[0], "20", "3");
 
-        // accounts[1] places bid with 10 tokens and 1 eth
-        console.log("accounts[1]", accounts[1].address);
-        await auctionContract.connect(accounts[1]).placeBid(parseEther("10"), parseEther("1"), {
-          value: getBidPrice(parseEther("10"), parseEther("1")),
-        });
-        await logState(auctionContract, accounts[1], "accounts[1]");
+        // accounts[1] places bid with 10 tokens and 1 eth (total 10 eth)
+        await placeBid(accounts[1], "10", "1");
+
+        // Total eth in the contract should be 210 eth
+        expect(await ethers.provider.getBalance(auctionAddress)).to.equal(parseEther("210"));
 
         await advanceToAuctionEnd(auctionEndTime);
 
-        await auctionContract.connect(owner).endAuction();
-
-        // lets log the whole path
-        const one = (await auctionContract.state()).topBidder;
-        const two = (await auctionContract.bids(one)).next;
-        const three = (await auctionContract.bids(two)).next;
-        const four = (await auctionContract.bids(three)).next;
-        const five = (await auctionContract.bids(four)).next;
-
-        console.log({
-          one: signers[one],
-          two: signers[two],
-          three: signers[three],
-          four: signers[four],
-          five: signers[five],
-        });
-
-        // The expected order of bidders should be:
-        // winners:
-        // accounts[0]
-        // eve
-        // bob
-        // non-winners:
-        // alice
-        // accounts[1]
+        // Validate expected sorted linked list
+        let currentBidder = (await auctionContract.state()).topBidder;
+        while (currentBidder !== ZeroAddress) {
+          bidders.push(currentBidder);
+          currentBidder = (await auctionContract.bids(currentBidder)).next;
+        }
       });
 
-      it("should revert if the auction is already ended", async function () {
+      it("should revert", async function () {
+        await auctionContract.connect(owner).endAuction();
+
         await expect(auctionContract.endAuction()).to.be.revertedWithCustomError(
           auctionContract,
           AuctionErrors.AuctionEnded
         );
       });
 
-      it("should update the auction state status to be ended", async function () {
-        const auctionState = await auctionContract.state();
-        expect(auctionState.status).to.equal(AuctionStatus.ENDED);
-      });
+      it("should update the state and bidders correctly", async function () {
+        const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
+        const tokenBalancesBefore = await Promise.all([
+          await tokenContract.connect(alice).balanceOf(alice.address),
+          await tokenContract.connect(bob).balanceOf(bob.address),
+          await tokenContract.connect(eve).balanceOf(eve.address),
+          await tokenContract.connect(accounts[0]).balanceOf(accounts[0].address),
+          await tokenContract.connect(accounts[1]).balanceOf(accounts[1].address),
+        ]);
 
-      it("should set the correct bidder as the top and last bidder", async function () {
+        // The expected order of bidders should be:
+        // winners: eve, accounts[0], bob
+        // non-winners: alice, accounts[1]
+        const gasFeeDelta = await getGasFee(auctionContract.connect(owner).endAuction());
+
+        const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
+
+        const tokenBalancesAfter = await Promise.all([
+          await tokenContract.connect(alice).balanceOf(alice.address),
+          await tokenContract.connect(bob).balanceOf(bob.address),
+          await tokenContract.connect(eve).balanceOf(eve.address),
+          await tokenContract.connect(accounts[0]).balanceOf(accounts[0].address),
+          await tokenContract.connect(accounts[1]).balanceOf(accounts[1].address),
+        ]);
+
+        const nonWinnerEthBalancesAfter = await Promise.all([
+          await ethers.provider.getBalance(alice.address),
+          await ethers.provider.getBalance(accounts[1].address),
+        ]);
+
+        // winners //
+
+        // eve
+        expect(bidders[0]).to.equal(eve.address);
+        expect(tokenBalancesAfter[2]).to.equal(tokenBalancesBefore[2] + parseEther("30"));
+        expect((await auctionContract.bids(bidders[0])).filled).to.equal(true);
+
+        // accounts[0]
+        expect(bidders[1]).to.equal(accounts[0].address);
+        expect(tokenBalancesAfter[3]).to.equal(tokenBalancesBefore[3] + parseEther("20"));
+        expect((await auctionContract.bids(bidders[1])).filled).to.equal(true);
+
+        // bob
+        expect(bidders[2]).to.equal(bob.address);
+        expect(tokenBalancesAfter[1]).to.equal(tokenBalancesBefore[1] + parseEther("20"));
+        expect((await auctionContract.bids(bidders[2])).filled).to.equal(true);
+
+        // non-winners //
+
+        // alice
+        expect(bidders[3]).to.equal(alice.address);
+        expect(tokenBalancesAfter[0]).to.equal(tokenBalancesBefore[0]);
+        expect((await auctionContract.bids(bidders[3])).filled).to.equal(false);
+
+        // accounts[1]
+        expect(bidders[4]).to.equal(accounts[1].address);
+        expect(tokenBalancesAfter[4]).to.equal(tokenBalancesBefore[4]);
+        expect((await auctionContract.bids(bidders[4])).filled).to.equal(false);
+
         const auctionState = await auctionContract.state();
+
+        expect(auctionState.status).to.equal(AuctionStatus.ENDED);
         expect(auctionState.topBidder).to.equal(eve.address);
         expect(auctionState.lastBidder).to.equal(accounts[1].address);
+
+        // the contract should have no eth
+        const contractBal = await ethers.provider.getBalance(auctionAddress);
+        expect(contractBal).to.equal(0);
+
+        // the owner should have received the winning bidders' eth (190 eth)
+        expect(ownerBalanceAfter).to.approximately(
+          ownerBalanceBefore + parseEther("190"),
+          gasFeeDelta
+        );
+
+        // the non-winners should have received their eth back
+        const gasDeltaFeeOfPlaceBid = 189929773065015n; // 0.000189929773065015 eth
+        expect(nonWinnerEthBalancesAfter[0]).to.approximately(
+          nonWinnerEthBalancesBefore[0],
+          gasDeltaFeeOfPlaceBid
+        );
+        expect(nonWinnerEthBalancesAfter[1]).to.approximately(
+          nonWinnerEthBalancesBefore[1],
+          gasDeltaFeeOfPlaceBid
+        );
       });
     });
   });
 });
-
-async function logState(auctionContract: Auction, caller: SignerWithAddress, name: string) {
-  const state = await auctionContract.state();
-  const bid = await auctionContract.bids(caller);
-  console.log(`-----------------------------${name}-----------------------------`);
-  console.log("State:");
-  console.log("topBidder:", state.topBidder);
-  console.log("lastBidder:", state.lastBidder);
-  console.log("totalBidCount:", state.totalBidCount.toString());
-  console.log("totalTokensForSale:", state.totalTokensForSale.toString());
-  console.log("token:", state.token);
-  console.log("endTime:", state.endTime.toString());
-  console.log("status:", state.status);
-  console.log("Bid:");
-  console.log("quantity:", bid.quantity.toString());
-  console.log("pricePerToken:", bid.pricePerToken.toString());
-  console.log("bidder:", bid.bidder);
-  console.log("timestamp:", bid.timestamp.toString());
-  console.log("filled:", bid.filled);
-  console.log("prev:", bid.prev);
-  console.log("next:", bid.next);
-  console.log("---------------------------------------------------------------");
-}
