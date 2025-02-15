@@ -49,7 +49,6 @@ interface IAuction {
     /// - The verification period must have expired.
     function endAuction() external;
 
-    /*
     /// @notice Computes the ETH price for a bid based on quantity and price per token.
     /// @dev Uses uint256 to prevent overflow before casting to uint128.
     /// @param quantity The number of tokens being bid for.
@@ -62,5 +61,4 @@ interface IAuction {
         external
         pure
         returns (uint128 price);
-    */
 }

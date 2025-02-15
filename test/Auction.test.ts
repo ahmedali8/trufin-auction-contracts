@@ -1,12 +1,10 @@
 import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { ZeroAddress, formatEther, parseEther, parseUnits } from "ethers";
+import { ZeroAddress, parseEther, parseUnits } from "ethers";
 import { ethers } from "hardhat";
-import { parse } from "path";
 
-import type { Auction, BidLibrary, MockToken } from "../types";
-import { token } from "../types/@openzeppelin/contracts";
+import type { Auction, MockToken } from "../types";
 import {
   AUCTION_DURATION,
   AuctionStatus,
@@ -37,10 +35,8 @@ describe("Auction Tests", function () {
   // contracts
   let auctionContract: Auction;
   let tokenContract: MockToken;
-  let bidLibrary: BidLibrary;
   let auctionAddress: string;
   let tokenAddress: string;
-  let bidLibraryAddress: string;
 
   /// HELPER FUNCTIONS ///
 
@@ -79,10 +75,8 @@ describe("Auction Tests", function () {
     ({
       auction: auctionContract,
       token: tokenContract,
-      bidLibrary,
       auctionAddress,
       tokenAddress,
-      bidLibraryAddress,
     } = await loadFixture(loadFixtures));
 
     // Mint some tokens to the wallets
@@ -92,11 +86,7 @@ describe("Auction Tests", function () {
 
   describe("#constructor", function () {
     it("should revert if the token address is zero address", async function () {
-      const AuctionFactory = await ethers.getContractFactory("Auction", {
-        libraries: {
-          BidLibrary: await ethers.getContractFactory("BidLibrary").then((f) => f.deploy()),
-        },
-      });
+      const AuctionFactory = await ethers.getContractFactory("Auction");
       await expect(
         AuctionFactory.connect(owner).deploy(owner.address, ZeroAddress)
       ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAddress);
