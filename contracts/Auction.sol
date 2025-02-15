@@ -39,10 +39,12 @@ contract Auction is IAuction, Ownable {
     /// @notice Deploys the auction contract and sets the initial verifier.
     /// @dev The verifier is a trusted address responsible for dispute resolution.
     /// @param initialOwner The address of the auction owner.
-    constructor(address initialOwner) Ownable(initialOwner) { }
+    constructor(address initialOwner, address token) Ownable(initialOwner) {
+        token.checkAddressZero();
+        state.token = IERC20(token);
+    }
 
     /// @inheritdoc IAuction
-
     function startAuction(
         uint128 totalTokens,
         uint40 duration
