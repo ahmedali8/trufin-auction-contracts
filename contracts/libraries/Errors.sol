@@ -27,7 +27,9 @@ library Errors {
     error InvalidAuctionStatus(Status expected, Status current);
 
     /// @notice Error when an auction already exists.
-    error AuctionExists();
+    error AuctionInProgress();
+
+    error AuctionEnded();
 
     /// @notice Error when trying to submit Merkle data more than once.
     error CanOnlySubmitOnce();
@@ -59,6 +61,8 @@ library Errors {
 
     /// @notice Error when an unordered bidder tries to claim before a winner/non-winner.
     error InvalidBidderClaim();
+
+    error BidAlreadyPlaced();
 
     // ---------------- MERKLE & HASH ERRORS ----------------
 

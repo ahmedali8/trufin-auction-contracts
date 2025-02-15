@@ -3,9 +3,7 @@ pragma solidity 0.8.26;
 
 // LIBRARIES
 import { AddressLibrary } from "./libraries/AddressLibrary.sol";
-import { MultiHashLibrary } from "./libraries/MultiHashLibrary.sol";
-import { MerkleRootLibrary } from "./libraries/MerkleRootLibrary.sol";
-import { StateLibrary } from "./libraries/StateLibrary.sol";
+// import { StateLibrary } from "./libraries/StateLibrary.sol";
 import { Constants } from "./libraries/Constants.sol";
 import { Errors } from "./libraries/Errors.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -18,7 +16,7 @@ import { IAuction } from "./interfaces/IAuction.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 // DATA TYPES
-import { State, Bid } from "./types/DataTypes.sol";
+import { State, Status, Bid } from "./types/DataTypes.sol";
 
 /// @title Auction
 /// @notice Implements a secure on-chain auction mechanism using a Merkle-based verification system.
@@ -27,66 +25,50 @@ import { State, Bid } from "./types/DataTypes.sol";
 contract Auction is IAuction, Ownable {
     using SafeERC20 for IERC20;
     using AddressLibrary for address;
-    using MultiHashLibrary for bytes32;
-    using MerkleRootLibrary for bytes32;
-    using StateLibrary for State;
-
-    /// @notice The window of time allowed for dispute resolution after the auction ends.
-    uint256 public constant VERIFICATION_WINDOW = Constants.VERIFICATION_WINDOW;
-
-    /// @notice The security deposit required from the auction owner to prevent fraud.
-    uint256 public constant SECURITY_DEPOSIT = Constants.SECURITY_DEPOSIT;
+    // using StateLibrary for State;
 
     /// @notice The minimum bid price per token in ETH.
     uint256 public constant MIN_BID_PRICE_PER_TOKEN = Constants.MIN_BID_PRICE_PER_TOKEN;
-
-    /// @notice The trusted verifier (DAO, multisig, or Chainlink OCR) responsible for dispute
-    /// resolution.
-    address public immutable VERIFIER;
-
-    /// @notice The track of the next bidder that can claim the tokens or eth
-    uint128 public nextBidderSerial = 1;
 
     /// @notice The state of the auction, including status, token, and timing information.
     State public state;
 
     /// @notice Mapping of bid IDs to Bid structs, storing details of each bid.
-    mapping(uint256 bidId => Bid bid) public bids;
-
-    /// @notice The next available bid ID to ensure unique identifiers.
-    uint256 public nextBidId = 1;
+    mapping(address bidder => Bid bid) public bids;
 
     /// @notice Deploys the auction contract and sets the initial verifier.
     /// @dev The verifier is a trusted address responsible for dispute resolution.
     /// @param initialOwner The address of the auction owner.
-    /// @param initialVerifier The address of the verifier entity.
-    constructor(address initialOwner, address initialVerifier) Ownable(initialOwner) {
-        if (initialVerifier == address(0)) {
-            revert Errors.InvalidAddress(initialVerifier);
-        }
-        VERIFIER = initialVerifier;
-
-        emit VerifierSet(initialVerifier);
-    }
+    constructor(address initialOwner) Ownable(initialOwner) { }
 
     /// @inheritdoc IAuction
-    function startAuction(IAuction.StartAuctionParams memory params)
+
+    function startAuction(
+        uint128 totalTokens,
+        uint40 duration
+    )
         external
         payable
         override
         onlyOwner
     {
-        // take the security deposit from the auctioneer to prevent fraud
-        if (msg.value != SECURITY_DEPOSIT) {
-            revert Errors.InvalidSecurityDeposit();
+        // state.startAuction(params);
+
+        if (state.status == Status.STARTED) {
+            revert Errors.AuctionInProgress();
         }
 
-        state.startAuction(params);
+        if (totalTokens == 0) {
+            revert Errors.ZeroTotalTokens();
+        }
+
+        state.endTime = uint40(block.timestamp) + duration;
+        state.totalTokensForSale = totalTokens;
 
         // take tokens from the owner and transfer them to this contract
-        IERC20(params.token).safeTransferFrom(_msgSender(), address(this), params.totalTokens);
+        state.token.safeTransferFrom(_msgSender(), address(this), totalTokens);
 
-        emit AuctionStarted(params.token, params.totalTokens, params.startTime, params.endTime);
+        emit AuctionStarted(totalTokens, uint40(block.timestamp), duration);
     }
 
     /// @inheritdoc IAuction
@@ -95,72 +77,147 @@ contract Auction is IAuction, Ownable {
             revert Errors.OwnerCannotPlaceBids();
         }
 
-        state.placeBid(bids, nextBidId, _msgSender(), quantity, pricePerToken);
+        if (state.status != Status.STARTED || uint40(block.timestamp) >= state.endTime) {
+            revert Errors.AuctionEnded();
+        }
 
+        if (quantity == 0) {
+            revert Errors.InvalidBidQuantity();
+        }
+
+        if (pricePerToken < MIN_BID_PRICE_PER_TOKEN) {
+            revert Errors.InvalidPricePerToken();
+        }
+
+        if (bids[_msgSender()].quantity != 0) {
+            revert Errors.BidAlreadyPlaced();
+        }
+
+        // state.placeBid(bids, nextBidId, _msgSender(), quantity, pricePerToken);
         if (getBidPrice(quantity, pricePerToken) != msg.value) {
             revert Errors.InvalidBidPrice();
         }
 
-        emit BidPlaced(nextBidId, _msgSender(), quantity, pricePerToken);
-        nextBidId++;
+        bids[_msgSender()] = Bid({
+            quantity: quantity,
+            pricePerToken: pricePerToken,
+            bidder: _msgSender(),
+            timestamp: uint40(block.timestamp),
+            filled: false,
+            prev: address(0),
+            next: address(0)
+        });
+
+        _insertBid(_msgSender());
+
+        state.totalBidCount++;
+
+        emit BidPlaced(_msgSender(), quantity, pricePerToken);
     }
 
-    /// @inheritdoc IAuction
-    function submitMerkleData(IAuction.MerkleDataParams calldata params)
-        external
-        override
-        onlyOwner
-    {
-        state.submitMerkleData(params);
+    function _insertBid(address bidder) internal {
+        // SSTORE: Create a new bid in storage
+        Bid storage newBid = bids[bidder];
 
-        emit MerkleRootSubmitted(params.merkleRoot, params.digest, params.hashFunction, params.size);
+        // If the auction has no bids yet, set this bidder as both the top and last bidder
+        if (state.topBidder == address(0)) {
+            state.topBidder = bidder; // SSTORE: Set top bidder
+            state.lastBidder = bidder; // SSTORE: Set last bidder
+            return; // Exit early to save gas
+        }
+
+        address _current = state.topBidder; // SLOAD: Start at highest bid
+        address _previous = address(0); // In-memory variable (not stored)
+
+        // Fetch new bid details into memory to avoid multiple storage reads
+        uint128 _newPrice = newBid.pricePerToken;
+        uint128 _newQuantity = newBid.quantity;
+
+        // Traverse the list and find the correct insertion position
+        while (_current != address(0)) {
+            // Fetch the current bid **only once** into memory (reducing storage reads)
+            Bid storage currentBid = bids[_current];
+
+            // Compare bids to determine placement position //
+
+            // Higher price -> higher priority
+            if (_newPrice > currentBid.pricePerToken) break;
+
+            // Same price, more quantity -> higher priority
+            if (_newPrice == currentBid.pricePerToken && _newQuantity > currentBid.quantity) {
+                break;
+            }
+
+            // FIFO (Tie) logic
+            if (
+                _newPrice == currentBid.pricePerToken && _newQuantity == currentBid.quantity
+                    && newBid.timestamp < currentBid.timestamp
+            ) break;
+
+            // Move to the next bid
+            _previous = _current;
+            _current = currentBid.next; // SLOAD: Fetch next bid in list
+        }
+
+        // SSTORE: Update new bid's pointers
+        newBid.next = _current;
+        newBid.prev = _previous;
+
+        if (_previous == address(0)) {
+            // CASE 1: Insert **at the top** (highest priority)
+            newBid.next = state.topBidder; // SSTORE: Point new bid to the old top bid
+            bids[state.topBidder].prev = bidder; // SSTORE: Update previous top bid’s `prev`
+            state.topBidder = bidder; // SSTORE: Update the new top bidder
+        } else {
+            // CASE 2 & 3: Insert **in the middle** or **at the end**
+            bids[_previous].next = bidder; // SSTORE: Update previous bid's `next`
+
+            if (_current != address(0)) {
+                // CASE 2: Insert in **the middle**
+                bids[_current].prev = bidder; // SSTORE: Update next bid's `prev`
+            } else {
+                // CASE 3: Insert **at the end** (lowest priority)
+                state.lastBidder = bidder; // SSTORE: Update last bidder
+            }
+        }
     }
 
     /// @inheritdoc IAuction
     function endAuction() external override {
-        state.endAuction();
+        // state.endAuction();
 
-        // Return security deposit if owner is not slashed
-        if (!state.isOwnerSlashed) {
-            owner().sendValue(Constants.SECURITY_DEPOSIT);
+        if (block.timestamp < state.endTime) {
+            revert Errors.AuctionEnded();
         }
 
-        emit AuctionEnded(_msgSender());
-    }
-
-    /// @inheritdoc IAuction
-    function claim(IAuction.ClaimParams calldata params) external override {
-        Bid memory _bid = bids[params.bidId];
-
-        state.claim(bids, params, _bid, nextBidderSerial, _msgSender());
-
-        // Update the serial
-        nextBidderSerial++;
-
-        if (params.quantity == 0) {
-            // Non-Winning bidder: Refund ETH
-            uint128 _ethAmount = getBidPrice(_bid.quantity, _bid.pricePerToken);
-            _bid.bidder.sendValue(_ethAmount);
-            emit ETHClaimed(_msgSender(), _ethAmount);
-        } else {
-            // Winning bidder: Transfer tokens
-            IERC20(state.token).safeTransfer(_msgSender(), _bid.quantity);
-            emit TokensClaimed(_msgSender(), _bid.quantity);
+        if (state.status == Status.ENDED) {
+            revert Errors.AuctionInProgress();
         }
-    }
 
-    /// @inheritdoc IAuction
-    function slash(IAuction.MerkleDataParams calldata params) external override {
-        if (_msgSender() != VERIFIER) {
-            revert Errors.OnlyVerifierCanResolveDispute();
+        state.status = Status.ENDED;
+        uint256 remainingTokens = state.totalTokensForSale;
+        address currentBidder = state.topBidder;
+
+        while (currentBidder != address(0)) {
+            Bid storage bid = bids[currentBidder];
+
+            if (remainingTokens > 0) {
+                // Allocate tokens to the highest bidder
+                uint256 allocatedAmount =
+                    bid.quantity <= remainingTokens ? bid.quantity : remainingTokens;
+                remainingTokens -= allocatedAmount;
+                state.token.transfer(currentBidder, allocatedAmount);
+                bid.filled = true;
+            } else {
+                uint256 refundAmount = (uint256(bid.quantity) * uint256(bid.pricePerToken)) / 1e18;
+                (bool success,) = currentBidder.call{ value: refundAmount }("");
+                require(success, "Refund failed");
+                emit RefundIssued(currentBidder, refundAmount);
+            }
+            currentBidder = bid.next;
         }
-        state.slash(params);
 
-        // Reward verifier for catching fraud
-        VERIFIER.sendValue(SECURITY_DEPOSIT);
-
-        emit MerkleRootUpdated(params.merkleRoot, params.digest, params.hashFunction, params.size);
-        emit AuctioneerPenalized(SECURITY_DEPOSIT);
+        emit AuctionEnded();
     }
 
     /// @inheritdoc IAuction
