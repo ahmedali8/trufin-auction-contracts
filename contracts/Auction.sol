@@ -56,14 +56,19 @@ contract Auction is IAuction, Ownable {
     {
         // state.startAuction(params);
 
-        if (state.status == Status.STARTED) {
-            revert Errors.AuctionInProgress();
-        }
-
         if (totalTokens == 0) {
             revert Errors.ZeroTotalTokens();
         }
 
+        if (duration == 0) {
+            revert Errors.ZeroDuration();
+        }
+
+        if (state.status == Status.STARTED) {
+            revert Errors.AuctionInProgress();
+        }
+
+        state.status = Status.STARTED;
         state.endTime = uint40(block.timestamp) + duration;
         state.totalTokensForSale = totalTokens;
 
@@ -79,10 +84,6 @@ contract Auction is IAuction, Ownable {
             revert Errors.OwnerCannotPlaceBids();
         }
 
-        if (state.status != Status.STARTED || uint40(block.timestamp) >= state.endTime) {
-            revert Errors.AuctionEnded();
-        }
-
         if (quantity == 0) {
             revert Errors.InvalidBidQuantity();
         }
@@ -91,13 +92,17 @@ contract Auction is IAuction, Ownable {
             revert Errors.InvalidPricePerToken();
         }
 
-        if (bids[_msgSender()].quantity != 0) {
-            revert Errors.BidAlreadyPlaced();
-        }
-
         // state.placeBid(bids, nextBidId, _msgSender(), quantity, pricePerToken);
         if (getBidPrice(quantity, pricePerToken) != msg.value) {
             revert Errors.InvalidBidPrice();
+        }
+
+        if (state.status != Status.STARTED || uint40(block.timestamp) >= state.endTime) {
+            revert Errors.AuctionEnded();
+        }
+
+        if (bids[_msgSender()].quantity != 0) {
+            revert Errors.BidAlreadyPlaced();
         }
 
         bids[_msgSender()] = Bid({
