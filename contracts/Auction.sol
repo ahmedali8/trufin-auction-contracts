@@ -186,7 +186,7 @@ contract Auction is IAuction, Ownable {
     function endAuction() external override {
         // state.endAuction();
 
-        if (block.timestamp < state.endTime) {
+        if (uint40(block.timestamp) < state.endTime) {
             revert Errors.AuctionEnded();
         }
 
@@ -195,26 +195,29 @@ contract Auction is IAuction, Ownable {
         }
 
         state.status = Status.ENDED;
-        uint256 remainingTokens = state.totalTokensForSale;
-        address currentBidder = state.topBidder;
+        uint256 _remainingTokens = state.totalTokensForSale;
+        address _currentBidder = state.topBidder;
 
-        while (currentBidder != address(0)) {
-            Bid storage bid = bids[currentBidder];
+        while (_currentBidder != address(0)) {
+            Bid storage bid = bids[_currentBidder];
 
-            if (remainingTokens > 0) {
+            if (_remainingTokens > 0) {
                 // Allocate tokens to the highest bidder
-                uint256 allocatedAmount =
-                    bid.quantity <= remainingTokens ? bid.quantity : remainingTokens;
-                remainingTokens -= allocatedAmount;
-                state.token.transfer(currentBidder, allocatedAmount);
+                uint256 _allocatedAmount =
+                    bid.quantity <= _remainingTokens ? bid.quantity : _remainingTokens;
+
+                _remainingTokens -= _allocatedAmount;
+
+                state.token.safeTransfer(_currentBidder, _allocatedAmount);
+
                 bid.filled = true;
             } else {
-                uint256 refundAmount = (uint256(bid.quantity) * uint256(bid.pricePerToken)) / 1e18;
-                (bool success,) = currentBidder.call{ value: refundAmount }("");
-                require(success, "Refund failed");
-                emit RefundIssued(currentBidder, refundAmount);
+                uint256 _refundAmount = getBidPrice(bid.quantity, bid.pricePerToken);
+                _currentBidder.sendValue(_refundAmount);
+                emit RefundIssued(_currentBidder, _refundAmount);
             }
-            currentBidder = bid.next;
+
+            _currentBidder = bid.next;
         }
 
         emit AuctionEnded();
