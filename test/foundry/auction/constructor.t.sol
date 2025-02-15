@@ -5,8 +5,7 @@ import { Auction_Test } from "./Auction.t.sol";
 
 contract Auction_Constructor_Test is Auction_Test {
     function test_Constructor_SetInitialOwnerAndVerifier() public view {
-        // Verify the owner and verifier are set correctly.
+        // Verify the owner are set correctly.
         assertEq(address(auction.owner()), address(users.owner));
-        assertEq(auction.VERIFIER(), users.verifier);
     }
 }

@@ -17,13 +17,14 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { State, Status, Bid } from "./types/DataTypes.sol";
 
 /// @title Auction
-/// @notice Implements a secure on-chain auction mechanism using a Merkle-based verification system.
+/// @notice Implements a secure on-chain auction mechanism using a priority-based bidding system.
 /// @dev This contract follows the `IAuction` interface and uses external libraries for security and
 /// efficiency.
 contract Auction is IAuction, Ownable {
     using SafeERC20 for IERC20;
     using AddressLibrary for address;
 
+    /// @notice The minimum price per token that can be bid.
     uint256 public constant MIN_BID_PRICE_PER_TOKEN = 1e15;
 
     /// @notice The state of the auction, including status, token, and timing information.
@@ -32,9 +33,10 @@ contract Auction is IAuction, Ownable {
     /// @notice Mapping of bid IDs to Bid structs, storing details of each bid.
     mapping(address bidder => Bid bid) public bids;
 
-    /// @notice Deploys the auction contract and sets the initial verifier.
-    /// @dev The verifier is a trusted address responsible for dispute resolution.
+    /// @notice Deploys the auction contract and sets the initial owner and token.
+    /// @dev Ensures the provided token address is valid.
     /// @param initialOwner The address of the auction owner.
+    /// @param token The ERC20 token being auctioned.
     constructor(address initialOwner, address token) Ownable(initialOwner) {
         token.checkAddressZero();
         state.token = IERC20(token);
@@ -172,7 +174,10 @@ contract Auction is IAuction, Ownable {
         }
     }
 
-    function _insertBid(address bidder) internal {
+    /// @notice Inserts a new bid into the priority-based doubly linked list.
+    /// @dev The list is sorted based on bid price, quantity, and timestamp to determine priority.
+    /// @param bidder The address of the bidder placing the bid.
+    function _insertBid(address bidder) private {
         Bid storage newBid = bids[bidder];
 
         // If the auction has no bids yet, set this bidder as both the top and last bidder

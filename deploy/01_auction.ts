@@ -6,12 +6,15 @@ import { verifyContract } from "../utils/verify";
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { getNamedAccounts, getChainId, deployments } = hre;
-  const { deploy } = deployments;
-  const { owner, verifier } = await getNamedAccounts();
+  const { deploy, get } = deployments;
+  const { owner } = await getNamedAccounts();
   const chainId = await getChainId();
 
+  // Get the address of the token
+  const token = await get("MockToken");
+
   type ConstructorParams = [Address, Address];
-  const args: ConstructorParams = [owner, verifier];
+  const args: ConstructorParams = [owner, token.address];
 
   await preDeploy(owner, "Auction");
   const deployResult: DeployResult = await deploy("Auction", {
@@ -36,3 +39,4 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 export default func;
 func.id = "deploy_auction";
 func.tags = ["Auction"];
+func.dependencies = ["deploy_mock_token"];

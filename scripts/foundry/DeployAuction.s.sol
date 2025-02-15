@@ -10,7 +10,7 @@ import { BaseScript } from "./Base.s.sol";
 contract DeployAuction is BaseScript {
     function run(
         address initialOwner,
-        address initialVerifier
+        address token
     )
         public
         virtual
@@ -18,6 +18,6 @@ contract DeployAuction is BaseScript {
         returns (Auction auction)
     {
         // deploy our contract
-        auction = new Auction(initialOwner, initialVerifier);
+        auction = new Auction(initialOwner, token);
     }
 }

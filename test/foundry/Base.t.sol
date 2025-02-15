@@ -4,6 +4,7 @@ pragma solidity >=0.8.23 <0.9.0;
 import { Test } from "forge-std/src/Test.sol";
 
 import { Auction } from "contracts/Auction.sol";
+import { MockToken } from "contracts/mocks/MockToken.sol";
 
 import { Users } from "./utils/Types.sol";
 
@@ -20,6 +21,7 @@ abstract contract Base_Test is Test {
     //////////////////////////////////////////////////////////////*/
 
     Auction internal auction;
+    MockToken internal mockToken;
 
     /*//////////////////////////////////////////////////////////////
                             SET-UP FUNCTION

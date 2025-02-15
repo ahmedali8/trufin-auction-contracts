@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title Auction Status Enum
 /// @notice Represents the different states an auction can be in.
@@ -19,16 +19,23 @@ enum Status {
 /// @notice Stores the current state of an auction.
 /// @dev This struct is stored in storage and used to track auction progress.
 struct State {
-    // Storage slot 0
-    address topBidder; // Highest priority bidder (doubly linked list head)
-    address lastBidder; // Last bidder in the linked list (doubly linked list tail)
-    // Storage slot 1
-    uint128 totalBidCount; // Total number of bids placed
-    uint128 totalTokensForSale; // Total tokens available for auction
-    // Storage slot 2
-    IERC20 token; // ERC20 token being auctioned
-    uint40 endTime; // Auction end time (5 bytes)
-    Status status; // Current auction status (1 byte)
+    // ---------------- SLOT 0 ----------------
+    /// @notice Address of the highest priority bidder (head of the doubly linked list).
+    address topBidder;
+    /// @notice Address of the last bidder in the linked list (tail of the doubly linked list).
+    address lastBidder;
+    // ---------------- SLOT 1 ----------------
+    /// @notice Total number of bids placed in the auction.
+    uint128 totalBidCount;
+    /// @notice Total number of tokens available for auction.
+    uint128 totalTokensForSale;
+    // ---------------- SLOT 2 ----------------
+    /// @notice The ERC20 token being auctioned.
+    IERC20 token;
+    /// @notice The timestamp when the auction ends.
+    uint40 endTime;
+    /// @notice The current status of the auction.
+    Status status;
 }
 
 /// @title Auction Bid Struct
@@ -37,16 +44,19 @@ struct State {
 struct Bid {
     // ---------------- SLOT 0 ----------------
     /// @notice The number of tokens the bidder wants to buy.
-    uint128 quantity; // 16 bytes
+    uint128 quantity;
     /// @notice The price per token the bidder is willing to pay (in Wei).
-    uint128 pricePerToken; // 16 bytes
+    uint128 pricePerToken;
     // ---------------- SLOT 1 ----------------
     /// @notice The address of the bidder.
-    /// @dev This address is used for refunds and token distribution.
-    address bidder; // 20 bytes
-    uint40 timestamp; // 5 bytes
-    bool filled; // 1 byte
+    address bidder;
+    /// @notice Timestamp when the bid was placed.
+    uint40 timestamp;
+    /// @notice Indicates whether the bid has been filled.
+    bool filled;
     // ---------------- SLOT 2 ----------------
-    address prev; // 20 bytes
-    address next; // 20 bytes
+    /// @notice Address of the previous bid in the linked list.
+    address prev;
+    /// @notice Address of the next bid in the linked list.
+    address next;
 }

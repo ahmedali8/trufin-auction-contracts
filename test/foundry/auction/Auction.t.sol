@@ -2,6 +2,7 @@
 pragma solidity >=0.8.23 <0.9.0;
 
 import { Auction } from "contracts/Auction.sol";
+import { MockToken } from "contracts/mocks/MockToken.sol";
 
 import { Base_Test } from "../Base.t.sol";
 
@@ -13,12 +14,18 @@ abstract contract Auction_Test is Base_Test {
 
     function setUp() public virtual override {
         Base_Test.setUp();
+        deployMockToken();
         deployAuction();
+    }
+
+    function deployMockToken() internal {
+        mockToken = new MockToken();
+        vm.label({ account: address(mockToken), newLabel: "MockToken" });
     }
 
     /// @dev Deploys {Auction} contract
     function deployAuction() internal {
-        auction = new Auction({ initialOwner: users.owner, initialVerifier: users.verifier });
+        auction = new Auction({ initialOwner: users.owner, token: address(mockToken) });
         vm.label({ account: address(auction), newLabel: "Auction" });
     }
 }
