@@ -3,7 +3,6 @@ pragma solidity 0.8.26;
 
 // LIBRARIES
 import { AddressLibrary } from "./libraries/AddressLibrary.sol";
-import { Constants } from "./libraries/Constants.sol";
 import { Errors } from "./libraries/Errors.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -24,6 +23,8 @@ import { State, Status, Bid } from "./types/DataTypes.sol";
 contract Auction is IAuction, Ownable {
     using SafeERC20 for IERC20;
     using AddressLibrary for address;
+
+    uint256 public constant MIN_BID_PRICE_PER_TOKEN = 1e15;
 
     /// @notice The state of the auction, including status, token, and timing information.
     State public state;
@@ -65,7 +66,9 @@ contract Auction is IAuction, Ownable {
 
     /// @inheritdoc IAuction
     function placeBid(uint128 quantity, uint128 pricePerToken) external payable override {
-        if (_msgSender() == owner()) {
+        address _sender = _msgSender();
+
+        if (_sender == owner()) {
             revert Errors.OwnerCannotPlaceBids();
         }
 
@@ -73,7 +76,7 @@ contract Auction is IAuction, Ownable {
             revert Errors.InvalidBidQuantity();
         }
 
-        if (pricePerToken < Constants.MIN_BID_PRICE_PER_TOKEN) {
+        if (pricePerToken < MIN_BID_PRICE_PER_TOKEN) {
             revert Errors.InvalidPricePerToken();
         }
 
@@ -85,92 +88,27 @@ contract Auction is IAuction, Ownable {
             revert Errors.AuctionEnded();
         }
 
-        if (bids[_msgSender()].quantity != 0) {
+        if (bids[_sender].quantity != 0) {
             revert Errors.BidAlreadyPlaced();
         }
 
-        bids[_msgSender()] = Bid({
+        Bid memory _newBid = Bid({
             quantity: quantity,
             pricePerToken: pricePerToken,
-            bidder: _msgSender(),
+            bidder: _sender,
             timestamp: uint40(block.timestamp),
             filled: false,
             prev: address(0),
             next: address(0)
         });
+        bids[_sender] = _newBid;
+        _insertBid(_sender);
 
-        _insertBid(_msgSender());
-
-        state.totalBidCount++;
-
-        emit BidPlaced(_msgSender(), quantity, pricePerToken);
-    }
-
-    function _insertBid(address bidder) internal {
-        // SSTORE: Create a new bid in storage
-        Bid storage newBid = bids[bidder];
-
-        // If the auction has no bids yet, set this bidder as both the top and last bidder
-        if (state.topBidder == address(0)) {
-            state.topBidder = bidder; // SSTORE: Set top bidder
-            state.lastBidder = bidder; // SSTORE: Set last bidder
-            return; // Exit early to save gas
+        unchecked {
+            state.totalBidCount++;
         }
 
-        address _current = state.topBidder; // SLOAD: Start at highest bid
-        address _previous = address(0); // In-memory variable (not stored)
-
-        // Fetch new bid details into memory to avoid multiple storage reads
-        uint128 _newPrice = newBid.pricePerToken;
-        uint128 _newQuantity = newBid.quantity;
-
-        // Traverse the list and find the correct insertion position
-        while (_current != address(0)) {
-            // Fetch the current bid **only once** into memory (reducing storage reads)
-            Bid storage currentBid = bids[_current];
-
-            // Compare bids to determine placement position //
-
-            // Higher price -> higher priority
-            if (_newPrice > currentBid.pricePerToken) break;
-
-            // Same price, more quantity -> higher priority
-            if (_newPrice == currentBid.pricePerToken && _newQuantity > currentBid.quantity) {
-                break;
-            }
-
-            // FIFO (Tie) logic
-            if (
-                _newPrice == currentBid.pricePerToken && _newQuantity == currentBid.quantity
-                    && newBid.timestamp < currentBid.timestamp
-            ) break;
-
-            // Move to the next bid
-            _previous = _current;
-            _current = currentBid.next; // SLOAD: Fetch next bid in list
-        }
-
-        // SSTORE: Update new bid's pointers
-        newBid.next = _current;
-        newBid.prev = _previous;
-
-        if (_previous == address(0)) {
-            // CASE 1: Insert **at the top** (highest priority)
-            newBid.next = state.topBidder; // SSTORE: Point new bid to the old top bid
-            bids[state.topBidder].prev = bidder; // SSTORE: Update previous top bid’s `prev`
-            state.topBidder = bidder; // SSTORE: Update the new top bidder
-        } else {
-            // CASE 2 & 3: Insert **in the middle** or **at the end**
-            bids[_previous].next = bidder; // SSTORE: Update previous bid's `next`
-
-            if (_current != address(0)) {
-                // CASE 2: Insert in **the middle**
-                bids[_current].prev = bidder; // SSTORE: Update next bid's `prev`
-            } else {
-                // CASE 3: Insert **at the end** (lowest priority)
-                state.lastBidder = bidder; // SSTORE: Update last bidder
-            }
-        }
+        emit BidPlaced(_sender, quantity, pricePerToken);
     }
 
     /// @inheritdoc IAuction
@@ -186,13 +124,15 @@ contract Auction is IAuction, Ownable {
         state.status = Status.ENDED;
         uint128 _remainingTokens = state.totalTokensForSale;
         address _currentBidder = state.topBidder;
+        uint128 _allocatedAmount = 0;
+        uint128 _refundAmount = 0;
 
         while (_currentBidder != address(0)) {
             Bid storage bid = bids[_currentBidder];
 
             if (_remainingTokens > 0) {
                 // Allocate tokens to the highest bidder
-                uint128 _allocatedAmount =
+                _allocatedAmount =
                     bid.quantity <= _remainingTokens ? bid.quantity : _remainingTokens;
 
                 _remainingTokens -= _allocatedAmount;
@@ -202,7 +142,7 @@ contract Auction is IAuction, Ownable {
                 bid.filled = true;
             } else {
                 // Refund the non-winners
-                uint128 _refundAmount = getBidPrice(bid.quantity, bid.pricePerToken);
+                _refundAmount = getBidPrice(bid.quantity, bid.pricePerToken);
                 _currentBidder.sendValue(_refundAmount);
                 emit RefundIssued(_currentBidder, _refundAmount);
             }
@@ -227,6 +167,93 @@ contract Auction is IAuction, Ownable {
         returns (uint128 price)
     {
         // use uint256 to avoid overflow
-        price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
+        unchecked {
+            price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
+        }
+    }
+
+    function _insertBid(address bidder) internal {
+        Bid storage newBid = bids[bidder];
+
+        // If the auction has no bids yet, set this bidder as both the top and last bidder
+        if (state.topBidder == address(0)) {
+            state.topBidder = state.lastBidder = bidder;
+            return;
+        }
+
+        address _current = state.topBidder; // Start at highest bid
+        address _previous;
+
+        // Fetch new bid details into memory to avoid multiple storage reads
+        uint128 _newPrice = newBid.pricePerToken;
+        uint128 _newQuantity = newBid.quantity;
+        uint40 _newTimestamp = newBid.timestamp;
+
+        // Traverse the list and find the correct insertion position
+        while (_current != address(0)) {
+            // Fetch the current bid only once into memory (reducing storage reads)
+            Bid storage currentBid = bids[_current];
+
+            // Compare bids to determine placement position //
+            // The following control-flow is optimized for gas efficiency
+            //
+            // Higher price -> higher priority
+            // if (_newPrice > currentBid.pricePerToken) break;
+            // Same price, more quantity -> higher priority
+            // if (_newPrice == currentBid.pricePerToken && _newQuantity > currentBid.quantity)
+            // break;
+            // FIFO (Tie) logic
+            // if (
+            //     _newPrice == currentBid.pricePerToken && _newQuantity == currentBid.quantity
+            //         && _newTimestamp < currentBid.timestamp
+            // ) break;
+            //
+            if (
+                // priority
+                _newPrice > currentBid.pricePerToken // Higher price -> higher priority
+                    || (
+                        _newPrice == currentBid.pricePerToken // Same price, more quantity -> higher
+                            && (
+                                _newQuantity > currentBid.quantity
+                                    || (
+                                        _newQuantity == currentBid.quantity
+                                            && _newTimestamp < currentBid.timestamp
+                                    )
+                            )
+                    ) // FIFO (Tie) logic
+            ) {
+                break;
+            }
+
+            // Move to the next bid
+            _previous = _current;
+            _current = currentBid.next; // Fetch next bid in list
+        }
+
+        if (_previous == address(0)) {
+            // CASE 1: Insert at the top (highest priority)
+
+            newBid.next = state.topBidder; // Point new bid to the old top bid
+            bids[state.topBidder].prev = bidder; // Update previous top bid’s `prev`
+            state.topBidder = bidder; // Update the new top bidder
+
+            return;
+        }
+
+        // CASE 2 & 3: Insert in the middle or at the end
+
+        // Update new bid's pointers
+        newBid.prev = _previous;
+        newBid.next = _current; // Point new bid to the current bid
+
+        bids[_previous].next = bidder; // Update previous bid's `next`
+
+        if (_current != address(0)) {
+            // CASE 2: Insert in the middle
+            bids[_current].prev = bidder; // Update next bid's `prev`
+        } else {
+            // CASE 3: Insert at the end (lowest priority)
+            state.lastBidder = bidder; // Update last bidder
+        }
     }
 }
