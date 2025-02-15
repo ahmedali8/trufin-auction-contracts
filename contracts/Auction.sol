@@ -3,7 +3,8 @@ pragma solidity 0.8.26;
 
 // LIBRARIES
 import { AddressLibrary } from "./libraries/AddressLibrary.sol";
-// import { StateLibrary } from "./libraries/StateLibrary.sol";
+import { StateLibrary } from "./libraries/StateLibrary.sol";
+import { BidLibrary } from "./libraries/BidLibrary.sol";
 import { Constants } from "./libraries/Constants.sol";
 import { Errors } from "./libraries/Errors.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -25,10 +26,8 @@ import { State, Status, Bid } from "./types/DataTypes.sol";
 contract Auction is IAuction, Ownable {
     using SafeERC20 for IERC20;
     using AddressLibrary for address;
-    // using StateLibrary for State;
-
-    /// @notice The minimum bid price per token in ETH.
-    uint256 public constant MIN_BID_PRICE_PER_TOKEN = Constants.MIN_BID_PRICE_PER_TOKEN;
+    using StateLibrary for State;
+    using BidLibrary for State;
 
     /// @notice The state of the auction, including status, token, and timing information.
     State public state;
@@ -46,23 +45,23 @@ contract Auction is IAuction, Ownable {
 
     /// @inheritdoc IAuction
     function startAuction(uint128 totalTokens, uint40 duration) external override onlyOwner {
-        // state.startAuction(params);
+        state.startAuction(totalTokens, duration);
 
-        if (totalTokens == 0) {
-            revert Errors.ZeroTotalTokens();
-        }
+        // if (totalTokens == 0) {
+        //     revert Errors.ZeroTotalTokens();
+        // }
 
-        if (duration == 0) {
-            revert Errors.ZeroDuration();
-        }
+        // if (duration == 0) {
+        //     revert Errors.ZeroDuration();
+        // }
 
-        if (state.status == Status.STARTED) {
-            revert Errors.AuctionInProgress();
-        }
+        // if (state.status == Status.STARTED) {
+        //     revert Errors.AuctionInProgress();
+        // }
 
-        state.status = Status.STARTED;
-        state.endTime = uint40(block.timestamp) + duration;
-        state.totalTokensForSale = totalTokens;
+        // state.status = Status.STARTED;
+        // state.endTime = uint40(block.timestamp) + duration;
+        // state.totalTokensForSale = totalTokens;
 
         // take tokens from the owner and transfer them to this contract
         state.token.safeTransferFrom(_msgSender(), address(this), totalTokens);
@@ -76,40 +75,41 @@ contract Auction is IAuction, Ownable {
             revert Errors.OwnerCannotPlaceBids();
         }
 
-        if (quantity == 0) {
-            revert Errors.InvalidBidQuantity();
-        }
+        state.placeBid(bids, _msgSender(), quantity, pricePerToken);
 
-        if (pricePerToken < MIN_BID_PRICE_PER_TOKEN) {
-            revert Errors.InvalidPricePerToken();
-        }
+        // if (quantity == 0) {
+        //     revert Errors.InvalidBidQuantity();
+        // }
 
-        // state.placeBid(bids, nextBidId, _msgSender(), quantity, pricePerToken);
-        if (getBidPrice(quantity, pricePerToken) != msg.value) {
-            revert Errors.InvalidBidPrice();
-        }
+        // if (pricePerToken < Constants.MIN_BID_PRICE_PER_TOKEN) {
+        //     revert Errors.InvalidPricePerToken();
+        // }
 
-        if (state.status != Status.STARTED || uint40(block.timestamp) >= state.endTime) {
-            revert Errors.AuctionEnded();
-        }
+        // if (BidLibrary.getBidPrice(quantity, pricePerToken) != msg.value) {
+        //     revert Errors.InvalidBidPrice();
+        // }
 
-        if (bids[_msgSender()].quantity != 0) {
-            revert Errors.BidAlreadyPlaced();
-        }
+        // if (state.status != Status.STARTED || uint40(block.timestamp) >= state.endTime) {
+        //     revert Errors.AuctionEnded();
+        // }
 
-        bids[_msgSender()] = Bid({
-            quantity: quantity,
-            pricePerToken: pricePerToken,
-            bidder: _msgSender(),
-            timestamp: uint40(block.timestamp),
-            filled: false,
-            prev: address(0),
-            next: address(0)
-        });
+        // if (bids[_msgSender()].quantity != 0) {
+        //     revert Errors.BidAlreadyPlaced();
+        // }
 
-        _insertBid(_msgSender());
+        // bids[_msgSender()] = Bid({
+        //     quantity: quantity,
+        //     pricePerToken: pricePerToken,
+        //     bidder: _msgSender(),
+        //     timestamp: uint40(block.timestamp),
+        //     filled: false,
+        //     prev: address(0),
+        //     next: address(0)
+        // });
 
-        state.totalBidCount++;
+        // _insertBid(_msgSender());
+
+        // state.totalBidCount++;
 
         emit BidPlaced(_msgSender(), quantity, pricePerToken);
     }
@@ -183,60 +183,60 @@ contract Auction is IAuction, Ownable {
 
     /// @inheritdoc IAuction
     function endAuction() external override {
-        // state.endAuction();
+        state.endAuction(bids, owner());
 
-        if (state.status == Status.ENDED) {
-            revert Errors.AuctionEnded();
-        }
+        // if (state.status == Status.ENDED) {
+        //     revert Errors.AuctionEnded();
+        // }
 
-        if (uint40(block.timestamp) < state.endTime) {
-            revert Errors.AuctionInProgress();
-        }
+        // if (uint40(block.timestamp) < state.endTime) {
+        //     revert Errors.AuctionInProgress();
+        // }
 
-        state.status = Status.ENDED;
-        uint256 _remainingTokens = state.totalTokensForSale;
-        address _currentBidder = state.topBidder;
+        // state.status = Status.ENDED;
+        // uint128 _remainingTokens = state.totalTokensForSale;
+        // address _currentBidder = state.topBidder;
 
-        while (_currentBidder != address(0)) {
-            Bid storage bid = bids[_currentBidder];
+        // while (_currentBidder != address(0)) {
+        //     Bid storage bid = bids[_currentBidder];
 
-            if (_remainingTokens > 0) {
-                // Allocate tokens to the highest bidder
-                uint256 _allocatedAmount =
-                    bid.quantity <= _remainingTokens ? bid.quantity : _remainingTokens;
+        //     if (_remainingTokens > 0) {
+        //         // Allocate tokens to the highest bidder
+        //         uint128 _allocatedAmount =
+        //             bid.quantity <= _remainingTokens ? bid.quantity : _remainingTokens;
 
-                _remainingTokens -= _allocatedAmount;
+        //         _remainingTokens -= _allocatedAmount;
 
-                state.token.safeTransfer(_currentBidder, _allocatedAmount);
+        //         state.token.safeTransfer(_currentBidder, _allocatedAmount);
 
-                bid.filled = true;
-            } else {
-                // Refund the non-winners
-                uint256 _refundAmount = getBidPrice(bid.quantity, bid.pricePerToken);
-                _currentBidder.sendValue(_refundAmount);
-                emit RefundIssued(_currentBidder, _refundAmount);
-            }
+        //         bid.filled = true;
+        //     } else {
+        //         // Refund the non-winners
+        //         uint128 _refundAmount = getBidPrice(bid.quantity, bid.pricePerToken);
+        //         _currentBidder.sendValue(_refundAmount);
+        //         emit RefundIssued(_currentBidder, _refundAmount);
+        //     }
 
-            _currentBidder = bid.next;
-        }
+        //     _currentBidder = bid.next;
+        // }
 
-        // Send remaining eth to the owner (i.e. the wining bidders' money)
-        owner().sendValue(address(this).balance);
+        // // Send remaining eth to the owner (i.e. the wining bidders' money)
+        // owner().sendValue(address(this).balance);
 
         emit AuctionEnded();
     }
 
-    /// @inheritdoc IAuction
-    function getBidPrice(
-        uint128 quantity,
-        uint128 pricePerToken
-    )
-        public
-        pure
-        override
-        returns (uint128 price)
-    {
-        // use uint256 to avoid overflow
-        price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
-    }
+    // /// @inheritdoc IAuction
+    // function getBidPrice(
+    //     uint128 quantity,
+    //     uint128 pricePerToken
+    // )
+    //     public
+    //     pure
+    //     override
+    //     returns (uint128 price)
+    // {
+    //     // use uint256 to avoid overflow
+    //     price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
+    // }
 }

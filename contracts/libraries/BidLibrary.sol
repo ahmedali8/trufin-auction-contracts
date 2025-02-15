@@ -20,16 +20,20 @@ library BidLibrary {
     )
         internal
     {
-        if (self.status != Status.STARTED || uint40(block.timestamp) >= self.endTime) {
-            revert Errors.AuctionEnded();
-        }
-
         if (quantity == 0) {
             revert Errors.InvalidBidQuantity();
         }
 
         if (pricePerToken < Constants.MIN_BID_PRICE_PER_TOKEN) {
             revert Errors.InvalidPricePerToken();
+        }
+
+        if (getBidPrice(quantity, pricePerToken) != msg.value) {
+            revert Errors.InvalidBidPrice();
+        }
+
+        if (self.status != Status.STARTED || uint40(block.timestamp) >= self.endTime) {
+            revert Errors.AuctionEnded();
         }
 
         if (bids[bidder].quantity != 0) {
@@ -133,5 +137,17 @@ library BidLibrary {
                 self.lastBidder = bidder; // Update last bidder
             }
         }
+    }
+
+    function getBidPrice(
+        uint128 quantity,
+        uint128 pricePerToken
+    )
+        public
+        pure
+        returns (uint128 price)
+    {
+        // use uint256 to avoid overflow
+        price = uint128((uint256(quantity) * uint256(pricePerToken) + 1e18 - 1) / 1e18);
     }
 }

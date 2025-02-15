@@ -5,7 +5,7 @@ import { ZeroAddress, formatEther, parseEther, parseUnits } from "ethers";
 import { ethers } from "hardhat";
 import { parse } from "path";
 
-import type { Auction, MockToken } from "../types";
+import type { Auction, BidLibrary, MockToken } from "../types";
 import { token } from "../types/@openzeppelin/contracts";
 import {
   AUCTION_DURATION,
@@ -37,8 +37,10 @@ describe("Auction Tests", function () {
   // contracts
   let auctionContract: Auction;
   let tokenContract: MockToken;
+  let bidLibrary: BidLibrary;
   let auctionAddress: string;
   let tokenAddress: string;
+  let bidLibraryAddress: string;
 
   /// HELPER FUNCTIONS ///
 
@@ -74,11 +76,14 @@ describe("Auction Tests", function () {
   });
 
   beforeEach(async function () {
-    const fixtures = await loadFixture(loadFixtures);
-    auctionContract = fixtures.auction;
-    auctionAddress = await auctionContract.getAddress();
-    tokenContract = fixtures.token;
-    tokenAddress = await tokenContract.getAddress();
+    ({
+      auction: auctionContract,
+      token: tokenContract,
+      bidLibrary,
+      auctionAddress,
+      tokenAddress,
+      bidLibraryAddress,
+    } = await loadFixture(loadFixtures));
 
     // Mint some tokens to the wallets
     const tokenAmount = parseEther("1000000");
@@ -87,7 +92,11 @@ describe("Auction Tests", function () {
 
   describe("#constructor", function () {
     it("should revert if the token address is zero address", async function () {
-      const AuctionFactory = await ethers.getContractFactory("Auction");
+      const AuctionFactory = await ethers.getContractFactory("Auction", {
+        libraries: {
+          BidLibrary: await ethers.getContractFactory("BidLibrary").then((f) => f.deploy()),
+        },
+      });
       await expect(
         AuctionFactory.connect(owner).deploy(owner.address, ZeroAddress)
       ).to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAddress);
@@ -302,6 +311,8 @@ describe("Auction Tests", function () {
     context("when the auction is ended", function () {
       const bidders: string[] = [];
       let nonWinnerEthBalancesBefore: bigint[] = [];
+      let gasFeeDeltaAlice: bigint = 0n;
+      let gasFeeDeltaAccount1: bigint = 0n;
 
       beforeEach(async function () {
         nonWinnerEthBalancesBefore = await Promise.all([
@@ -312,7 +323,7 @@ describe("Auction Tests", function () {
         // Place Bids //
 
         // alice places bid with 10 tokens and 1 eth (total 10 eth)
-        await placeBid(alice, "10", "1");
+        gasFeeDeltaAlice = (await placeBid(alice, "10", "1")) as bigint;
 
         // bob places bid with 20 tokens and 2 eth (total 40 eth)
         await placeBid(bob, "20", "2");
@@ -324,7 +335,7 @@ describe("Auction Tests", function () {
         await placeBid(accounts[0], "20", "3");
 
         // accounts[1] places bid with 10 tokens and 1 eth (total 10 eth)
-        await placeBid(accounts[1], "10", "1");
+        gasFeeDeltaAccount1 = (await placeBid(accounts[1], "10", "1")) as bigint;
 
         // Total eth in the contract should be 210 eth
         expect(await ethers.provider.getBalance(auctionAddress)).to.equal(parseEther("210"));
@@ -424,14 +435,13 @@ describe("Auction Tests", function () {
         );
 
         // the non-winners should have received their eth back
-        const gasDeltaFeeOfPlaceBid = 189929773065015n; // 0.000189929773065015 eth
         expect(nonWinnerEthBalancesAfter[0]).to.approximately(
           nonWinnerEthBalancesBefore[0],
-          gasDeltaFeeOfPlaceBid
+          gasFeeDeltaAlice
         );
         expect(nonWinnerEthBalancesAfter[1]).to.approximately(
           nonWinnerEthBalancesBefore[1],
-          gasDeltaFeeOfPlaceBid
+          gasFeeDeltaAccount1
         );
       });
     });
