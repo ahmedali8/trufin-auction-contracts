@@ -38,7 +38,7 @@ export async function getTimeData() {
 
 // gets the price
 export function getBidPrice(quantity: bigint, pricePerToken: bigint) {
-  return (pricePerToken * quantity) / parseUnits("1", 18);
+  return (quantity * pricePerToken) / parseUnits("1", 18);
 }
 
 // Move time forward to the start of the auction
