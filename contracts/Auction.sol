@@ -193,11 +193,11 @@ contract Auction is IAuction, Ownable {
     function endAuction() external override {
         // state.endAuction();
 
-        if (uint40(block.timestamp) < state.endTime) {
+        if (state.status == Status.ENDED) {
             revert Errors.AuctionEnded();
         }
 
-        if (state.status == Status.ENDED) {
+        if (uint40(block.timestamp) < state.endTime) {
             revert Errors.AuctionInProgress();
         }
 

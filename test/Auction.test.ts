@@ -28,10 +28,11 @@ import {
 
 describe("Auction Tests", function () {
   // signers
+  let signers: Record<string, string>;
   let owner: SignerWithAddress;
   let alice: SignerWithAddress;
   let bob: SignerWithAddress;
-  let verifier: SignerWithAddress;
+  let eve: SignerWithAddress;
   let accounts: SignerWithAddress[];
 
   // contracts
@@ -42,17 +43,25 @@ describe("Auction Tests", function () {
 
   /// HELPER FUNCTIONS ///
 
-  async function approveAndStartAuction() {
+  async function approveAndStartAuction(totalTokens: bigint = TOTAL_TOKENS) {
     const { currentTime, duration, endTime } = await getTimeData();
 
-    await tokenContract.connect(owner).approve(auctionContract.getAddress(), TOTAL_TOKENS);
-    await auctionContract.connect(owner).startAuction(TOTAL_TOKENS, duration);
+    await tokenContract.connect(owner).approve(auctionContract.getAddress(), totalTokens);
+    await auctionContract.connect(owner).startAuction(totalTokens, duration);
 
     return { currentTime, duration, endTime };
   }
 
   before(async function () {
-    [owner, verifier, alice, bob, ...accounts] = await ethers.getSigners();
+    [owner, alice, bob, eve, ...accounts] = await ethers.getSigners();
+    signers = {
+      [owner.address]: "owner",
+      [alice.address]: "alice",
+      [bob.address]: "bob",
+      [eve.address]: "eve",
+      [accounts[0].address]: "accounts[0]",
+      [accounts[1].address]: "accounts[1]",
+    };
   });
 
   beforeEach(async function () {
@@ -64,11 +73,7 @@ describe("Auction Tests", function () {
 
     // Mint some tokens to the wallets
     const tokenAmount = parseEther("1000000");
-    await Promise.all([
-      tokenContract.mint(owner.address, tokenAmount),
-      tokenContract.mint(alice.address, tokenAmount),
-      tokenContract.mint(bob.address, tokenAmount),
-    ]);
+    await Promise.all([tokenContract.mint(owner.address, tokenAmount)]);
   });
 
   describe("#constructor", function () {
@@ -268,47 +273,139 @@ describe("Auction Tests", function () {
     });
   });
 
-  /*
   describe("#endAuction", function () {
-    let endTime = 0;
+    const totalTokens = parseEther("70");
+    let auctionCurrentTime = 0;
+    let duration = 0;
+    let auctionEndTime = 0;
 
     beforeEach(async function () {
-      ({ endTime } = await approveAndStartAuction());
-      await advanceToAuctionEnd(endTime);
+      ({
+        currentTime: auctionCurrentTime,
+        duration,
+        endTime: auctionEndTime,
+      } = await approveAndStartAuction(totalTokens));
+
+      await advanceToAuctionStart(auctionCurrentTime);
     });
 
-    context("when prerequisites are not met", function () {
-      it("should revert if merkle root has not been submitted", async function () {
-        await expect(auctionContract.connect(owner).endAuction())
-          .to.be.revertedWithCustomError(auctionContract, AuctionErrors.InvalidAuctionStatus)
-          .withArgs(AuctionStatus.MERKLE_SUBMITTED, AuctionStatus.ACTIVE);
-      });
-
-      it("should revert if the verification time is not over", async function () {
-        await auctionContract.connect(owner).submitMerkleData(MOCK_SUBMIT_MERKLE_DATA_PARAMS);
-
-        await expect(auctionContract.connect(alice).endAuction()).to.be.revertedWithCustomError(
+    context("when the auction is not ended", function () {
+      it("should revert", async function () {
+        await expect(auctionContract.endAuction()).to.be.revertedWithCustomError(
           auctionContract,
-          AuctionErrors.VerificationPeriodNotOver
+          AuctionErrors.AuctionInProgress
         );
       });
     });
 
-    context("when successfully ending the auction", function () {
+    context("when the auction is ended", function () {
       beforeEach(async function () {
-        await auctionContract.connect(owner).submitMerkleData(MOCK_SUBMIT_MERKLE_DATA_PARAMS);
-        await time.increase(VERIFICATION_WINDOW + TIME_BUFFER);
+        // Place Bids //
+
+        // alice places bid with 10 tokens and 1 eth
+        console.log("alice", alice.address);
+        await auctionContract.connect(alice).placeBid(parseEther("10"), parseEther("1"), {
+          value: getBidPrice(parseEther("10"), parseEther("1")),
+        });
+        await logState(auctionContract, alice, "alice");
+
+        // bob places bid with 20 tokens and 2 eth
+        console.log("bob", bob.address);
+        await auctionContract.connect(bob).placeBid(parseEther("20"), parseEther("2"), {
+          value: getBidPrice(parseEther("20"), parseEther("2")),
+        });
+        await logState(auctionContract, bob, "bob");
+
+        // eve places bid with 30 tokens and 3 eth
+        console.log("eve", eve.address);
+        await auctionContract.connect(eve).placeBid(parseEther("30"), parseEther("3"), {
+          value: getBidPrice(parseEther("30"), parseEther("3")),
+        });
+        await logState(auctionContract, eve, "eve");
+
+        // accounts[0] places bid with 20 tokens and 3 eth
+        console.log("accounts[0]", accounts[0].address);
+        await auctionContract.connect(accounts[0]).placeBid(parseEther("20"), parseEther("3"), {
+          value: getBidPrice(parseEther("20"), parseEther("3")),
+        });
+        await logState(auctionContract, accounts[0], "accounts[0]");
+
+        // accounts[1] places bid with 10 tokens and 1 eth
+        console.log("accounts[1]", accounts[1].address);
+        await auctionContract.connect(accounts[1]).placeBid(parseEther("10"), parseEther("1"), {
+          value: getBidPrice(parseEther("10"), parseEther("1")),
+        });
+        await logState(auctionContract, accounts[1], "accounts[1]");
+
+        await advanceToAuctionEnd(auctionEndTime);
+
+        await auctionContract.connect(owner).endAuction();
+
+        // lets log the whole path
+        const one = (await auctionContract.state()).topBidder;
+        const two = (await auctionContract.bids(one)).next;
+        const three = (await auctionContract.bids(two)).next;
+        const four = (await auctionContract.bids(three)).next;
+        const five = (await auctionContract.bids(four)).next;
+
+        console.log({
+          one: signers[one],
+          two: signers[two],
+          three: signers[three],
+          four: signers[four],
+          five: signers[five],
+        });
+
+        // The expected order of bidders should be:
+        // winners:
+        // accounts[0]
+        // eve
+        // bob
+        // non-winners:
+        // alice
+        // accounts[1]
       });
 
-      it("should emit an event and update state", async function () {
-        await expect(auctionContract.connect(alice).endAuction())
-          .to.emit(auctionContract, "AuctionEnded")
-          .withArgs(alice.address);
+      it("should revert if the auction is already ended", async function () {
+        await expect(auctionContract.endAuction()).to.be.revertedWithCustomError(
+          auctionContract,
+          AuctionErrors.AuctionEnded
+        );
+      });
 
+      it("should update the auction state status to be ended", async function () {
         const auctionState = await auctionContract.state();
         expect(auctionState.status).to.equal(AuctionStatus.ENDED);
       });
+
+      it("should set the correct bidder as the top and last bidder", async function () {
+        const auctionState = await auctionContract.state();
+        expect(auctionState.topBidder).to.equal(eve.address);
+        expect(auctionState.lastBidder).to.equal(accounts[1].address);
+      });
     });
   });
-   */
 });
+
+async function logState(auctionContract: Auction, caller: SignerWithAddress, name: string) {
+  const state = await auctionContract.state();
+  const bid = await auctionContract.bids(caller);
+  console.log(`-----------------------------${name}-----------------------------`);
+  console.log("State:");
+  console.log("topBidder:", state.topBidder);
+  console.log("lastBidder:", state.lastBidder);
+  console.log("totalBidCount:", state.totalBidCount.toString());
+  console.log("totalTokensForSale:", state.totalTokensForSale.toString());
+  console.log("token:", state.token);
+  console.log("endTime:", state.endTime.toString());
+  console.log("status:", state.status);
+  console.log("Bid:");
+  console.log("quantity:", bid.quantity.toString());
+  console.log("pricePerToken:", bid.pricePerToken.toString());
+  console.log("bidder:", bid.bidder);
+  console.log("timestamp:", bid.timestamp.toString());
+  console.log("filled:", bid.filled);
+  console.log("prev:", bid.prev);
+  console.log("next:", bid.next);
+  console.log("---------------------------------------------------------------");
+}
