@@ -105,7 +105,7 @@ const config: HardhatUserConfig = {
     // Local network configs
     anvil: { chainId: 31337, url: "http://127.0.0.1:8545" },
     ganache: { chainId: 1337, url: "http://127.0.0.1:7545" },
-    hardhat: { chainId: 31337 },
+    hardhat: { chainId: 31337, accounts: { count: 150 } },
     localhost: { chainId: 31337 },
     "truffle-dashboard": {
       url: "http://localhost:24012/rpc",
